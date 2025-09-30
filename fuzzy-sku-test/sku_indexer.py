@@ -461,7 +461,7 @@ class JapaneseSKUIndexer:
             print(f"❌ Index creation failed: {e}")
             return False
 
-    def index_sku_data(self, csv_file="TM_SYOHIN_202509291906.csv"):
+    def index_sku_data(self, csv_file="TM_SYOHIN_202509302313.csv"):
         """Index SKU master data from CSV with batch processing"""
 
         if not os.path.exists(csv_file):
@@ -562,12 +562,63 @@ class JapaneseSKUIndexer:
         print("\n🔍 Validating index with sample searches...")
 
         test_cases = [
-            "FX-1",
-            "便座",
-            "暖房",
-            "KX-SDR",
-            "メイジ",  # This might not exist but tests fuzzy matching
-            "メイジバランスソフト",  # Test case for partial matching
+            # Exact matches - should find exact products
+            "FX-1",  # Exact SKU code
+            "KX-SDR",  # Another exact SKU code
+            "ポータブルトイレEX-T型",  # Full product name
+            # Japanese variations - test normalization
+            "便座",  # Common toilet seat term
+            "暖房",  # Heating term
+            "シャワーベンチ",  # Shower bench (katakana)
+            "しゃわーべんち",  # Same in hiragana (should match)
+            "ｼｬﾜｰﾍﾞﾝﾁ",  # Half-width katakana (should normalize)
+            # Partial/typo scenarios - fuzzy matching
+            "FX1",  # Missing hyphen
+            "KX SDR",  # Space instead of hyphen
+            "ﾎﾟｰﾀﾌﾞﾙ",  # Partial katakana
+            "ポータブル",  # Full katakana version
+            "トイレ",  # Generic toilet term
+            # Complex product names from CSV
+            "電動便座昇降機",  # Electric toilet seat lift
+            "吸着すべり止めマット",  # Anti-slip mat
+            "木製玄関台",  # Wooden entrance platform
+            "浴槽台",  # Bath platform
+            # Synonym testing (when we add synonyms back)
+            "ウォシュレット",  # Should match 温水洗浄便座
+            "車椅子",  # Should match 車いす variants
+            "車イス",  # Another wheelchair variant
+            "車いす",  # Yet another variant
+            # Edge cases - numbers and special chars
+            "22×1",  # Numbers with special chars
+            "#3000",  # Hash + numbers
+            "45W-30-1段",  # Complex alphanumeric
+            # Long product names
+            "ひじ掛け付シャワーベンチK-TH",  # Long descriptive name
+            "折りたたみシャワーベンチ",  # Foldable shower bench
+            # Medical/care products
+            "ステソスコープ",  # Stethoscope
+            "血圧計",  # Blood pressure monitor
+            # Katakana brand names
+            "リットマン",  # Littmann (brand)
+            "コラリッチ",  # Collagen product
+            # Partial matches that should work
+            "メイジ",  # Brand prefix (might not exist)
+            "グラン",  # GRAN series
+            "ルミエ",  # RUMIE series
+            "スタイル",  # Style series
+            # Numbers only
+            "3000",  # Should find #3000 items
+            "45",  # Should find various 45* items
+            # Common misspellings/variations
+            "シヤワー",  # ヤ instead of ャ
+            "ベット",  # ッ instead of ド (bed)
+            "マット",  # Mat/mattress
+            # English/Romaji (if romaji analyzer works)
+            "shower",  # English for シャワー
+            "toilet",  # English for トイレ
+            # Non-existent (should return no results gracefully)
+            "存在しない商品",  # Non-existent product
+            "NONEXIST-999",  # Non-existent SKU
         ]
 
         for query in test_cases:
