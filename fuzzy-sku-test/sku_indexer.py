@@ -657,6 +657,71 @@ class JapaneseSKUIndexer:
 
         print("✅ Index validation complete")
 
+    def simple_search(self, query, max_results=10):
+        """Simple fuzzy search method for testing"""
+        try:
+            response = self.client.search(
+                index=self.index_name,
+                body={
+                    "query": {
+                        "bool": {
+                            "should": [
+                                {"match": {"sku_name": {"query": query, "boost": 3.0}}},
+                                {
+                                    "match": {
+                                        "sku_name.exact": {"query": query, "boost": 2.0}
+                                    }
+                                },
+                                {
+                                    "match": {
+                                        "sku_name.ngram": {"query": query, "boost": 1.5}
+                                    }
+                                },
+                                {
+                                    "match": {
+                                        "sku_name.fuzzy": {"query": query, "boost": 1.0}
+                                    }
+                                },
+                                {
+                                    "match": {
+                                        "sku_name.partial": {
+                                            "query": query,
+                                            "boost": 1.2,
+                                        }
+                                    }
+                                },
+                                {
+                                    "match": {
+                                        "sku_name.synonym": {
+                                            "query": query,
+                                            "boost": 1.8,
+                                        }
+                                    }
+                                },
+                            ]
+                        }
+                    },
+                    "size": max_results,
+                },
+            )
+
+            hits = response["hits"]["hits"]
+            total = response["hits"]["total"]["value"]
+
+            print(f"\n🔍 Search: '{query}'")
+            print(f"📊 Found: {len(hits)} results (total: {total})")
+
+            for i, hit in enumerate(hits, 1):
+                name = hit["_source"]["sku_name"]
+                score = hit["_score"]
+                print(f"   {i:2d}. '{name}' (score: {score:.2f})")
+
+            return hits
+
+        except Exception as e:
+            print(f"❌ Search failed: {e}")
+            return []
+
 
 def main():
     """Main indexing process"""
@@ -690,7 +755,18 @@ def main():
     indexer.validate_index()
 
     print("\n🎉 Indexing complete! Ready for fuzzy search testing.")
-    print("Next step: Run 'python fuzzy_search_tester.py'")
+
+    # Optional: Interactive search mode
+    while True:
+        try:
+            query = input("\n🔎 Enter search query (or 'quit' to exit): ").strip()
+            if query.lower() in ["quit", "exit", "q", ""]:
+                break
+            indexer.simple_search(query)
+        except KeyboardInterrupt:
+            break
+
+    print("👋 Session ended.")
 
 
 if __name__ == "__main__":
