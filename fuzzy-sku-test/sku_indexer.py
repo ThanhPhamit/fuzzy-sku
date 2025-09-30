@@ -283,7 +283,6 @@ class JapaneseSKUIndexer:
                                 "kuromoji_part_of_speech",
                                 "cjk_width",
                                 "lowercase",
-                                "product_synonyms",
                             ],
                         },
                         "japanese_ngram": {
@@ -295,7 +294,6 @@ class JapaneseSKUIndexer:
                                 "cjk_width",
                                 "lowercase",
                                 "edge_ngram_filter",
-                                "product_synonyms",
                             ],
                         },
                         "japanese_fuzzy": {
@@ -316,7 +314,6 @@ class JapaneseSKUIndexer:
                                 "cjk_width",
                                 "lowercase",
                                 "char_ngram_filter",
-                                "product_synonyms",
                             ],
                         },
                         "exact_match": {
@@ -369,6 +366,10 @@ class JapaneseSKUIndexer:
                             "min_gram": 2,
                             "max_gram": 4,
                         },
+                        "asciifolding": {
+                            "type": "asciifolding",
+                            "preserve_original": True,
+                        },
                         "product_synonyms": {
                             "type": "synonym",
                             "synonyms": [
@@ -401,7 +402,6 @@ class JapaneseSKUIndexer:
                                 "床ずれ防止,褥瘡予防,じょくそう予防",
                             ],
                         },
-                        "katakana_stemmer": {"type": "kuromoji_stemmer"},
                     },
                 },
             },
