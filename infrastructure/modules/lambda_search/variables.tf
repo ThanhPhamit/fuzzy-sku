@@ -32,7 +32,7 @@ variable "opensearch_index_name" {
 variable "runtime" {
   description = "Lambda runtime"
   type        = string
-  default     = "python3.11"
+  default     = "python3.12"
   validation {
     condition = contains([
       "python3.9", "python3.10", "python3.11", "python3.12"

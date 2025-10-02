@@ -59,7 +59,8 @@ resource "aws_cognito_user_pool" "this" {
   # Auto verified attributes
   auto_verified_attributes = var.enable_email_verification ? ["email"] : []
 
-  # User attributes
+  # User attributes - preserving existing schema to prevent modification errors
+  # AWS Cognito User Pool schema attributes are immutable after creation
   schema {
     attribute_data_type = "String"
     name                = "email"
@@ -81,6 +82,11 @@ resource "aws_cognito_user_pool" "this" {
     mutable             = true
   }
 
+  # Lifecycle management to ignore schema changes since they are immutable
+  lifecycle {
+    ignore_changes = [schema]
+  }
+
   # Verification message template
   dynamic "verification_message_template" {
     for_each = var.enable_email_verification ? [1] : []
@@ -96,8 +102,8 @@ resource "aws_cognito_user_pool" "this" {
     advanced_security_mode = "ENFORCED"
   }
 
-  # Deletion protection
-  deletion_protection = "ACTIVE"
+  # Deletion protection - configurable for easier testing/development
+  deletion_protection = var.deletion_protection
 
   tags = merge(var.tags, {
     Name      = "${var.app_name}-user-pool"
@@ -112,13 +118,15 @@ resource "aws_cognito_user_pool_client" "this" {
 
   generate_secret = var.generate_secret
 
-  # OAuth configuration
-  supported_identity_providers         = var.supported_identity_providers
-  callback_urls                        = var.callback_urls
-  logout_urls                          = var.logout_urls
-  allowed_oauth_flows                  = var.allowed_oauth_flows
-  allowed_oauth_scopes                 = var.allowed_oauth_scopes
-  allowed_oauth_flows_user_pool_client = true
+  # OAuth configuration - conditional based on whether OAuth flows are enabled
+  supported_identity_providers = var.supported_identity_providers
+
+  # Only set OAuth configuration if flows are specified and URLs are provided
+  callback_urls                        = length(var.allowed_oauth_flows) > 0 && length(var.callback_urls) > 0 ? var.callback_urls : null
+  logout_urls                          = length(var.allowed_oauth_flows) > 0 && length(var.logout_urls) > 0 ? var.logout_urls : null
+  allowed_oauth_flows                  = length(var.allowed_oauth_flows) > 0 && length(var.callback_urls) > 0 ? var.allowed_oauth_flows : null
+  allowed_oauth_scopes                 = length(var.allowed_oauth_flows) > 0 && length(var.callback_urls) > 0 ? var.allowed_oauth_scopes : null
+  allowed_oauth_flows_user_pool_client = length(var.allowed_oauth_flows) > 0 && length(var.callback_urls) > 0 ? true : false
 
   # Token validity
   access_token_validity  = var.token_validity.access_token

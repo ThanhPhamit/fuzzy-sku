@@ -5,16 +5,22 @@ variable "aws_region" {
   default     = "ap-northeast-3"
 }
 
+variable "profile" {
+  description = "AWS CLI profile to use"
+  type        = string
+  default     = "welfan-lg-mfa"
+}
+
 variable "environment" {
   description = "Environment name"
   type        = string
-  default     = "staging"
+  default     = "production"
 }
 
 variable "app_name" {
   description = "Application name"
   type        = string
-  default     = "fuzzy-sku"
+  default     = "fuzzy-sku-poc"
 }
 
 # OpenSearch configuration
@@ -22,13 +28,13 @@ variable "opensearch_endpoint" {
   description = "OpenSearch domain endpoint"
   type        = string
   # Update this with your actual OpenSearch endpoint
-  default = "https://search-fuzzy-sku-staging.ap-northeast-3.es.amazonaws.com"
+  default = "https://search-fuzzy-sku-ppba34qtds6ocweyl62wmgv5we.aos.ap-northeast-3.on.aws"
 }
 
 variable "opensearch_index_name" {
   description = "OpenSearch index name"
   type        = string
-  default     = "japanese_sku_index"
+  default     = "sku-master"
 }
 
 # API Gateway configuration
@@ -47,7 +53,7 @@ variable "enable_cors" {
 variable "cors_allowed_origins" {
   description = "Allowed origins for CORS"
   type        = list(string)
-  default     = ["*"] # Restrict this in production
+  default     = []
 }
 
 # Lambda configuration
@@ -60,44 +66,44 @@ variable "lambda_timeout" {
 variable "lambda_memory_size" {
   description = "Lambda function memory size in MB"
   type        = number
-  default     = 512
+  default     = 1024 # Higher for production
 }
 
 variable "lambda_reserved_concurrency" {
   description = "Lambda reserved concurrency"
   type        = number
-  default     = 5
+  default     = 20 # Higher for production
 }
 
 # Cognito configuration
 variable "cognito_mfa_configuration" {
   description = "MFA configuration for Cognito"
   type        = string
-  default     = "OPTIONAL"
+  default     = "OFF" # Changed to OFF until MFA methods are properly configured
 }
 
 variable "cognito_password_minimum_length" {
   description = "Minimum password length for Cognito"
   type        = number
-  default     = 8
+  default     = 12 # Stronger for production
 }
 
 # Monitoring and logging
 variable "log_retention_days" {
   description = "CloudWatch log retention in days"
   type        = number
-  default     = 14
+  default     = 30 # Longer retention for production
 }
 
 variable "enable_xray_tracing" {
   description = "Enable X-Ray tracing"
   type        = bool
-  default     = true
+  default     = false
 }
 
 # Networking (if needed for Lambda VPC)
 variable "vpc_id" {
-  description = "VPC ID for Lambda function (optional)"
+  description = "VPC ID for Lambda function (recommended for production)"
   type        = string
   default     = null
 }
@@ -108,9 +114,32 @@ variable "subnet_ids" {
   default     = []
 }
 
+variable "security_group_ids" {
+  description = "Security group IDs for Lambda"
+  type        = list(string)
+  default     = []
+}
+
+# Performance and scaling
+variable "api_throttle_burst_limit" {
+  description = "API Gateway throttle burst limit"
+  type        = number
+  default     = 5000
+}
+
+variable "api_throttle_rate_limit" {
+  description = "API Gateway throttle rate limit"
+  type        = number
+  default     = 2000
+}
+
 # Tags
 variable "additional_tags" {
   description = "Additional tags to apply to all resources"
   type        = map(string)
-  default     = {}
+  default = {
+    CriticalityLevel = "high"
+    BackupRequired   = "yes"
+    MonitoringLevel  = "enhanced"
+  }
 }

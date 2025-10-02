@@ -1,7 +1,3 @@
-# Get current AWS region and account
-data "aws_region" "current" {}
-data "aws_caller_identity" "current" {}
-
 # Main Lambda function using terraform-aws-modules
 module "lambda" {
   source  = "terraform-aws-modules/lambda/aws"
@@ -23,7 +19,7 @@ module "lambda" {
   environment_variables = merge(var.environment_variables, {
     OPENSEARCH_ENDPOINT = var.opensearch_endpoint
     INDEX_NAME          = var.opensearch_index_name
-    AWS_REGION          = data.aws_region.current.name
+    SEARCH_REGION       = data.aws_region.current.id
     LOG_LEVEL           = var.log_level
     ENVIRONMENT         = var.environment
   })
@@ -44,7 +40,7 @@ module "lambda" {
         "es:ESHttpHead"
       ]
       resources = [
-        "arn:aws:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/*"
+        "arn:aws:es:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:domain/*"
       ]
     }
     xray = {

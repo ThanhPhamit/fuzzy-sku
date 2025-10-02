@@ -3,7 +3,7 @@ import os
 import logging
 from typing import Dict, Any, List, Optional
 from opensearchpy import OpenSearch, RequestsHttpConnection
-from aws_requests_auth.aws_auth import AWSRequestsAuth
+from requests_aws4auth import AWS4Auth
 import boto3
 
 # Configure logging
@@ -16,7 +16,7 @@ class JapaneseSKUSearcher:
 
     def __init__(self):
         self.opensearch_endpoint = os.environ.get("OPENSEARCH_ENDPOINT")
-        self.index_name = os.environ.get("INDEX_NAME", "japanese_sku_index")
+        self.index_name = os.environ.get("INDEX_NAME", "sku-master")
         self.region = os.environ.get("AWS_REGION", "ap-northeast-3")
         self.client = self._get_opensearch_client()
 
@@ -28,13 +28,12 @@ class JapaneseSKUSearcher:
             credentials = session.get_credentials()
 
             # Create AWS auth
-            awsauth = AWSRequestsAuth(
-                aws_access_key=credentials.access_key,
-                aws_secret_access_key=credentials.secret_key,
-                aws_token=credentials.token,
-                aws_host=self.opensearch_endpoint.replace("https://", ""),
-                aws_region=self.region,
-                aws_service="es",
+            awsauth = AWS4Auth(
+                credentials.access_key,
+                credentials.secret_key,
+                self.region,
+                "es",
+                session_token=credentials.token,
             )
 
             # Create OpenSearch client
@@ -49,7 +48,7 @@ class JapaneseSKUSearcher:
                 use_ssl=True,
                 verify_certs=True,
                 connection_class=RequestsHttpConnection,
-                timeout=30,
+                timeout=30,  # Fixed: use integer instead of string
                 max_retries=3,
                 retry_on_timeout=True,
             )
@@ -67,27 +66,24 @@ class JapaneseSKUSearcher:
             logger.error(f"Failed to initialize OpenSearch client: {str(e)}")
             raise
 
-    def search_sku(
-        self, query: str, size: int = 20, filters: Optional[Dict] = None
-    ) -> Dict[str, Any]:
+    def search_sku(self, query: str, size: int = 20) -> Dict[str, Any]:
         """
-        Perform Japanese SKU fuzzy search
+        Perform simple Japanese SKU search (no filters)
 
         Args:
             query: Search query (Japanese text, SKU codes, etc.)
             size: Number of results to return
-            filters: Additional filters to apply
 
         Returns:
             Search results with metadata
         """
         try:
-            # Build search body with multi-field strategy
-            search_body = self._build_search_query(query, size, filters)
+            # Build simple search body
+            search_body = self._build_search_query(query, size)
 
             # Execute search
             response = self.client.search(
-                index=self.index_name, body=search_body, timeout="30s"
+                index=self.index_name, body=search_body, timeout=30
             )
 
             # Process and return results
@@ -97,144 +93,29 @@ class JapaneseSKUSearcher:
             logger.error(f"Search failed for query '{query}': {str(e)}")
             raise
 
-    def _build_search_query(
-        self, query: str, size: int, filters: Optional[Dict]
-    ) -> Dict[str, Any]:
-        """Build OpenSearch query with Japanese text optimization"""
+    def _build_search_query(self, query: str, size: int) -> Dict[str, Any]:
+        """Build simple OpenSearch query for SKU name search only (like validate_index)"""
 
-        # Multi-field search strategy matching your original implementation
-        multi_match_queries = [
-            # Exact match (highest priority)
-            {
-                "multi_match": {
-                    "query": query,
-                    "fields": [
-                        "sku_code.exact^10",
-                        "name.exact^8",
-                        "description.exact^6",
-                    ],
-                    "type": "phrase",
-                    "boost": 100,
-                }
-            },
-            # Standard Japanese analysis
-            {
-                "multi_match": {
-                    "query": query,
-                    "fields": [
-                        "sku_code.japanese^8",
-                        "name.japanese^6",
-                        "description.japanese^4",
-                    ],
-                    "type": "best_fields",
-                    "boost": 50,
-                }
-            },
-            # N-gram for partial matches
-            {
-                "multi_match": {
-                    "query": query,
-                    "fields": [
-                        "sku_code.ngram^6",
-                        "name.ngram^4",
-                        "description.ngram^3",
-                    ],
-                    "type": "best_fields",
-                    "boost": 30,
-                }
-            },
-            # Fuzzy matching
-            {
-                "multi_match": {
-                    "query": query,
-                    "fields": [
-                        "sku_code.fuzzy^4",
-                        "name.fuzzy^3",
-                        "description.fuzzy^2",
-                    ],
-                    "type": "best_fields",
-                    "fuzziness": "AUTO",
-                    "boost": 20,
-                }
-            },
-            # Partial matching
-            {
-                "multi_match": {
-                    "query": query,
-                    "fields": [
-                        "sku_code.partial^3",
-                        "name.partial^2",
-                        "description.partial^1",
-                    ],
-                    "type": "phrase_prefix",
-                    "boost": 15,
-                }
-            },
-            # Reading-based search (hiragana/katakana)
-            {
-                "multi_match": {
-                    "query": query,
-                    "fields": ["name.reading^5", "description.reading^3"],
-                    "type": "best_fields",
-                    "boost": 25,
-                }
-            },
-            # Synonym search
-            {
-                "multi_match": {
-                    "query": query,
-                    "fields": ["name.synonym^4", "description.synonym^2"],
-                    "type": "best_fields",
-                    "boost": 20,
-                }
-            },
-            # Romaji search
-            {
-                "multi_match": {
-                    "query": query,
-                    "fields": ["name.romaji^3", "description.romaji^2"],
-                    "type": "best_fields",
-                    "boost": 15,
-                }
-            },
-        ]
-
-        # Combine queries with should (OR logic)
-        bool_query = {"should": multi_match_queries, "minimum_should_match": 1}
-
-        # Add filters if provided
-        if filters:
-            bool_query["filter"] = []
-            for field, value in filters.items():
-                if isinstance(value, list):
-                    bool_query["filter"].append({"terms": {field: value}})
-                else:
-                    bool_query["filter"].append({"term": {field: value}})
-
-        # Build complete search body
+        # Simple search strategy similar to your indexer's validate_index method
         search_body = {
-            "query": {"bool": bool_query},
+            "query": {
+                "bool": {
+                    "should": [
+                        {"match": {"sku_name": {"query": query, "boost": 3.0}}},
+                        {"match": {"sku_name.exact": {"query": query, "boost": 2.0}}},
+                        {"match": {"sku_name.ngram": {"query": query, "boost": 1.5}}},
+                        {"match": {"sku_name.fuzzy": {"query": query, "boost": 1.0}}},
+                        {"match": {"sku_name.partial": {"query": query, "boost": 1.2}}},
+                        {"match": {"sku_name.synonym": {"query": query, "boost": 1.8}}},
+                    ]
+                }
+            },
             "size": size,
-            "sort": [
-                {"_score": {"order": "desc"}},
-                {"sku_code.keyword": {"order": "asc"}},
-            ],
+            "sort": [{"_score": {"order": "desc"}}],
             "highlight": {
                 "fields": {
-                    "name": {"pre_tags": ["<mark>"], "post_tags": ["</mark>"]},
-                    "description": {"pre_tags": ["<mark>"], "post_tags": ["</mark>"]},
-                    "sku_code": {"pre_tags": ["<mark>"], "post_tags": ["</mark>"]},
+                    "sku_name": {"pre_tags": ["<mark>"], "post_tags": ["</mark>"]},
                 }
-            },
-            "_source": {
-                "includes": [
-                    "sku_code",
-                    "name",
-                    "description",
-                    "category",
-                    "price",
-                    "stock_status",
-                ]
             },
         }
 
@@ -256,14 +137,10 @@ class JapaneseSKUSearcher:
             score = hit.get("_score", 0)
             highlight = hit.get("highlight", {})
 
-            # Build result item
+            # Build result item (simplified)
             result_item = {
-                "sku_code": source.get("sku_code", ""),
-                "name": source.get("name", ""),
-                "description": source.get("description", ""),
-                "category": source.get("category", ""),
-                "price": source.get("price"),
-                "stock_status": source.get("stock_status", ""),
+                "id": source.get("id", ""),
+                "sku_name": source.get("sku_name", ""),
                 "score": score,
                 "highlights": highlight,
             }
@@ -286,19 +163,12 @@ class JapaneseSKUSearcher:
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
-    AWS Lambda handler for Japanese SKU search
+    AWS Lambda handler for simple Japanese SKU search (GET only)
 
-    Expected event formats:
-
-    POST request body:
-    {
-        "query": "search term",
-        "size": 20,
-        "filters": {"category": "medicine"}
-    }
+    Expected event format:
 
     GET request query parameters:
-    ?q=search_term&size=20&category=medicine
+    ?q=search_term&size=20
     """
 
     logger.info(f"Lambda invoked with event: {json.dumps(event, ensure_ascii=False)}")
@@ -307,14 +177,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Initialize searcher
         searcher = JapaneseSKUSearcher()
 
-        # Parse request parameters
-        query, size, filters = _parse_request(event)
+        # Parse request parameters (simplified)
+        query, size = _parse_request(event)
 
         if not query:
             return _create_response(400, {"error": "Missing required parameter: query"})
 
-        # Perform search
-        results = searcher.search_sku(query, size, filters)
+        # Perform simple search
+        results = searcher.search_sku(query, size)
 
         # Return successful response
         return _create_response(200, results)
@@ -327,56 +197,30 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 
 def _parse_request(event: Dict[str, Any]) -> tuple:
-    """Parse Lambda event to extract search parameters"""
+    """Parse Lambda event to extract search parameters (GET only)"""
 
     # Default values
     query = None
     size = 20
-    filters = {}
 
-    # Handle API Gateway event
+    # Handle API Gateway event (GET only)
     if "httpMethod" in event:
-        http_method = event.get("httpMethod", "GET")
-
-        if http_method == "POST":
-            # Parse POST body
-            body = event.get("body", "{}")
-            if isinstance(body, str):
-                try:
-                    body_data = json.loads(body)
-                    query = body_data.get("query")
-                    size = body_data.get("size", 20)
-                    filters = body_data.get("filters", {})
-                except json.JSONDecodeError:
-                    logger.warning("Failed to parse POST body as JSON")
-            else:
-                query = body.get("query")
-                size = body.get("size", 20)
-                filters = body.get("filters", {})
-
-        elif http_method == "GET":
-            # Parse query parameters
-            query_params = event.get("queryStringParameters") or {}
-            query = query_params.get("q") or query_params.get("query")
-            size = int(query_params.get("size", 20))
-
-            # Extract filter parameters
-            for key, value in query_params.items():
-                if key not in ["q", "query", "size"]:
-                    filters[key] = value
+        # Parse query parameters
+        query_params = event.get("queryStringParameters") or {}
+        query = query_params.get("q") or query_params.get("query")
+        size = int(query_params.get("size", 20))
 
     # Handle direct invocation
     else:
         query = event.get("query")
         size = event.get("size", 20)
-        filters = event.get("filters", {})
 
     # Validate and constrain size
     size = max(1, min(size, 100))  # Between 1 and 100
 
-    logger.info(f"Parsed request - query: '{query}', size: {size}, filters: {filters}")
+    logger.info(f"Parsed request - query: '{query}', size: {size}")
 
-    return query, size, filters
+    return query, size
 
 
 def _create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
@@ -387,7 +231,7 @@ def _create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
         "headers": {
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type, Authorization",
         },
         "body": json.dumps(body, ensure_ascii=False, separators=(",", ":")),

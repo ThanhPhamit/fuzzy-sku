@@ -16,7 +16,7 @@ output "api_gateway_execution_arn" {
 
 output "api_gateway_url" {
   description = "URL of the API Gateway"
-  value       = "https://${aws_api_gateway_rest_api.this.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${var.stage_name}"
+  value       = "https://${aws_api_gateway_rest_api.this.id}.execute-api.${data.aws_region.current.id}.amazonaws.com/${var.stage_name}"
 }
 
 output "api_gateway_stage_name" {
@@ -26,7 +26,7 @@ output "api_gateway_stage_name" {
 
 output "search_endpoint_url" {
   description = "Full URL for the search endpoint"
-  value       = "https://${aws_api_gateway_rest_api.this.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${var.stage_name}/search/sku"
+  value       = "https://${aws_api_gateway_rest_api.this.id}.execute-api.${data.aws_region.current.id}.amazonaws.com/${var.stage_name}/search/sku"
 }
 
 output "authorizer_id" {

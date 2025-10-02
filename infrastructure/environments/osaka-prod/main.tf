@@ -1,20 +1,3 @@
-# Local values for resource naming and tagging
-locals {
-  name_prefix = "${var.app_name}-${var.environment}"
-
-  # Common tags for all resources
-  common_tags = merge({
-    Environment = var.environment
-    Project     = var.app_name
-    ManagedBy   = "terraform"
-    Region      = var.aws_region
-  }, var.additional_tags)
-}
-
-# Data sources
-data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
-
 # Cognito Authentication Module
 module "cognito_auth" {
   source = "../../modules/cognito_auth"
@@ -34,18 +17,17 @@ module "cognito_auth" {
     temporary_password_validity_days = 3 # Shorter for production
   }
 
-  # Production OAuth configuration
-  callback_urls = [
-    "https://your-production-domain.com/callback",
-    "https://admin.your-production-domain.com/callback"
-  ]
-
-  logout_urls = [
-    "https://your-production-domain.com/logout",
-    "https://admin.your-production-domain.com/logout"
-  ]
+  # For production, override callback URLs when you have actual domain
+  # callback_urls = ["https://yourdomain.com/callback"]
+  # logout_urls = ["https://yourdomain.com/logout"]
 
   enable_email_verification = true
+
+  # Public client configuration - no OAuth flows
+  generate_secret     = false
+  allowed_oauth_flows = []
+  callback_urls       = []
+  logout_urls         = []
 
   # Production token validity (shorter for security)
   token_validity = {
@@ -53,6 +35,10 @@ module "cognito_auth" {
     id_token      = 1 # 1 hour
     refresh_token = 7 # 7 days
   }
+
+  # Deletion protection - set to INACTIVE for easier testing/development
+  # For production, consider setting to ACTIVE to prevent accidental deletion
+  deletion_protection = "INACTIVE"
 }
 
 # Lambda Search Function Module
@@ -69,7 +55,7 @@ module "lambda_search" {
   opensearch_index_name = var.opensearch_index_name
 
   # Production Lambda configuration
-  runtime     = "python3.11"
+  runtime     = "python3.12"
   handler     = "lambda_function.lambda_handler"
   timeout     = var.lambda_timeout
   memory_size = var.lambda_memory_size

@@ -87,19 +87,19 @@ variable "supported_identity_providers" {
 variable "callback_urls" {
   description = "List of allowed callback URLs"
   type        = list(string)
-  default     = ["https://localhost:3000/callback"]
+  default     = []
 }
 
 variable "logout_urls" {
   description = "List of allowed logout URLs"
   type        = list(string)
-  default     = ["https://localhost:3000/logout"]
+  default     = []
 }
 
 variable "allowed_oauth_flows" {
-  description = "List of allowed OAuth flows"
+  description = "List of allowed OAuth flows (empty list disables OAuth)"
   type        = list(string)
-  default     = ["code"]
+  default     = []
 }
 
 variable "allowed_oauth_scopes" {
@@ -147,4 +147,15 @@ variable "domain_name" {
   description = "Domain name for the user pool (if not provided, will use app_name)"
   type        = string
   default     = null
+}
+
+# Deletion protection
+variable "deletion_protection" {
+  description = "Enable deletion protection for the User Pool (ACTIVE or INACTIVE)"
+  type        = string
+  default     = "INACTIVE"
+  validation {
+    condition     = contains(["ACTIVE", "INACTIVE"], var.deletion_protection)
+    error_message = "Deletion protection must be ACTIVE or INACTIVE."
+  }
 }

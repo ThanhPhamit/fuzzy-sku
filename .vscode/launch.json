@@ -1,0 +1,31 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Auth Test",
+      "program": "${workspaceFolder}/test/auth.test.ts",
+      "runtimeArgs": ["-r", "ts-node/register"],
+      "cwd": "${workspaceFolder}/test",
+      "env": {
+        "AWS_REGION": "ap-northeast-3",
+        "AWS_PROFILE": "welfan-lg-mfa"
+      }
+      // "console": "integratedTerminal"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Current Test File",
+      "program": "${relativeFile}",
+      "runtimeArgs": ["-r", "ts-node/register"],
+      "cwd": "${fileDirname}",
+      "env": {
+        "AWS_REGION": "ap-northeast-3",
+        "AWS_PROFILE": "welfan-lg-mfa"
+      }
+      // "console": "integratedTerminal"
+    }
+  ]
+}

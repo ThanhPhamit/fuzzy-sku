@@ -19,9 +19,9 @@ output "user_pool_domain" {
   value       = var.enable_user_pool_domain ? aws_cognito_user_pool_domain.this[0].domain : null
 }
 
-output "user_pool_hosted_ui_url" {
-  description = "Hosted UI URL for the Cognito User Pool"
-  value       = var.enable_user_pool_domain ? "https://${aws_cognito_user_pool_domain.this[0].domain}.auth.${data.aws_region.current.name}.amazoncognito.com" : null
+output "hosted_ui_url" {
+  description = "Hosted UI URL for the user pool"
+  value       = var.enable_user_pool_domain ? "https://${aws_cognito_user_pool_domain.this[0].domain}.auth.${data.aws_region.current.id}.amazoncognito.com" : null
 }
 
 output "user_pool_client_id" {
@@ -47,10 +47,10 @@ output "authenticated_role_arn" {
 
 output "login_url" {
   description = "Login URL for the application"
-  value       = var.enable_user_pool_domain ? "${aws_cognito_user_pool_domain.this[0].domain}.auth.${data.aws_region.current.name}.amazoncognito.com/login?client_id=${aws_cognito_user_pool_client.this.id}&response_type=code&scope=email+openid+profile&redirect_uri=${var.callback_urls[0]}" : null
+  value       = var.enable_user_pool_domain && length(var.callback_urls) > 0 ? "${aws_cognito_user_pool_domain.this[0].domain}.auth.${data.aws_region.current.id}.amazoncognito.com/login?client_id=${aws_cognito_user_pool_client.this.id}&response_type=code&scope=email+openid+profile&redirect_uri=${var.callback_urls[0]}" : null
 }
 
 output "logout_url" {
   description = "Logout URL for the application"
-  value       = var.enable_user_pool_domain ? "${aws_cognito_user_pool_domain.this[0].domain}.auth.${data.aws_region.current.name}.amazoncognito.com/logout?client_id=${aws_cognito_user_pool_client.this.id}&logout_uri=${var.logout_urls[0]}" : null
+  value       = var.enable_user_pool_domain && length(var.logout_urls) > 0 ? "${aws_cognito_user_pool_domain.this[0].domain}.auth.${data.aws_region.current.id}.amazoncognito.com/logout?client_id=${aws_cognito_user_pool_client.this.id}&logout_uri=${var.logout_urls[0]}" : null
 }

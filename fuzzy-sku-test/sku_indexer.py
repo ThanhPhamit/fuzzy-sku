@@ -154,7 +154,7 @@ class JapaneseSKUIndexer:
                         "katakana_hiragana": {
                             "type": "mapping",
                             "mappings": [
-                                # Basic katakana to hiragana (46 characters)
+                                # ----- Gojūon -----
                                 "ア => あ",
                                 "イ => い",
                                 "ウ => う",
@@ -201,7 +201,7 @@ class JapaneseSKUIndexer:
                                 "ワ => わ",
                                 "ヲ => を",
                                 "ン => ん",
-                                # Dakuten (voiced) variants
+                                # ----- Dakuten / Handakuten -----
                                 "ガ => が",
                                 "ギ => ぎ",
                                 "グ => ぐ",
@@ -222,13 +222,12 @@ class JapaneseSKUIndexer:
                                 "ブ => ぶ",
                                 "ベ => べ",
                                 "ボ => ぼ",
-                                # Handakuten (semi-voiced) variants
                                 "パ => ぱ",
                                 "ピ => ぴ",
                                 "プ => ぷ",
                                 "ペ => ぺ",
                                 "ポ => ぽ",
-                                # Small characters
+                                # ----- Small kana -----
                                 "ァ => ぁ",
                                 "ィ => ぃ",
                                 "ゥ => ぅ",
@@ -239,29 +238,48 @@ class JapaneseSKUIndexer:
                                 "ュ => ゅ",
                                 "ョ => ょ",
                                 "ヮ => ゎ",
-                                # Special katakana
+                                # ----- Historical kana -----
+                                "ヰ => ゐ",
+                                "ヱ => ゑ",
+                                # ----- V-sounds (modern; put longer first) -----
+                                "ヴァ => ゔぁ",
+                                "ヴィ => ゔぃ",
+                                "ヴゥ => ゔぅ",
+                                "ヴェ => ゔぇ",
+                                "ヴォ => ゔぉ",
                                 "ヴ => ゔ",
-                                # ADD missing characters:
-                                # Extended katakana (for foreign words)
-                                "ヷ => わ゙",  # VA (rare)
-                                "ヸ => ゐ゙",  # VI (rare)
-                                "ヹ => ゑ゙",  # VE (rare)
-                                "ヺ => を゙",  # VO (rare)
-                                # Long vowel mark (keep as-is)
-                                "ー => ー",  # Chōonpu - important for SKUs!
-                                # Iteration marks
-                                "ヽ => ゝ",  # Katakana iteration mark
-                                "ヾ => ゞ",  # Katakana voiced iteration mark
-                                # Middle dot (keep as-is for product names)
-                                "・ => ・",  # Nakaguro - used in product names
-                                # Small TSU variants (for foreign sounds)
-                                "ヶ => が",  # Small KE (used in counters)
-                                "ヵ => か",  # Small KA
-                                # Additional small vowels (modern usage)
-                                "ㇰ => く",  # Small KU
-                                "ㇱ => し",  # Small SHI
-                                "ㇲ => す",  # Small SU
-                                "ㇳ => と",  # Small TO
+                                # Single-codepoint VA/VI/VE/VO → modern
+                                "ヷ => ゔぁ",
+                                "ヸ => ゔぃ",
+                                "ヹ => ゔぇ",
+                                "ヺ => ゔぉ",
+                                # ----- Small KA/KE (counters; no auto-voicing) -----
+                                "ヵ => か",
+                                "ヶ => け",
+                                # ----- Iteration marks (use kuromoji_iteration_mark if possible) -----
+                                "ヽ => ゝ",
+                                "ヾ => ゞ",
+                                # ----- Keep-as-is for product formatting -----
+                                "ー => ー",
+                                "・ => ・",
+                                # ----- Ainu small kana (Katakana Phonetic Extensions) -----
+                                "ㇰ => く",
+                                "ㇱ => し",
+                                "ㇲ => す",
+                                "ㇳ => と",
+                                "ㇴ => ぬ",
+                                "ㇵ => は",
+                                "ㇶ => ひ",
+                                "ㇷ => ふ",
+                                "ㇷ゚ => ぷ",
+                                "ㇸ => へ",
+                                "ㇹ => ほ",
+                                "ㇺ => む",
+                                "ㇻ => ら",
+                                "ㇼ => り",
+                                "ㇽ => る",
+                                "ㇾ => れ",
+                                "ㇿ => ろ",
                             ],
                         },
                     },
@@ -274,17 +292,21 @@ class JapaneseSKUIndexer:
                         }
                     },
                     "analyzer": {
+                        # Standard Japanese analyzer - for basic word-level matching
+                        # Normalizes text and uses Kuromoji for proper Japanese tokenization
                         "japanese_standard": {
                             "type": "custom",
                             "char_filter": ["normalize_chars", "katakana_hiragana"],
                             "tokenizer": "kuromoji_tokenizer",
                             "filter": [
-                                "kuromoji_baseform",
-                                "kuromoji_part_of_speech",
-                                "cjk_width",
+                                "kuromoji_baseform",  # Convert to dictionary form
+                                "kuromoji_part_of_speech",  # Filter by POS tags
+                                "cjk_width",  # Normalize character width
                                 "lowercase",
                             ],
                         },
+                        # N-gram analyzer - for prefix/autocomplete matching
+                        # Good for "as-you-type" search functionality
                         "japanese_ngram": {
                             "type": "custom",
                             "char_filter": ["normalize_chars", "katakana_hiragana"],
@@ -293,18 +315,22 @@ class JapaneseSKUIndexer:
                                 "kuromoji_baseform",
                                 "cjk_width",
                                 "lowercase",
-                                "edge_ngram_filter",
+                                "edge_ngram_filter",  # Creates prefix tokens (2-8 chars)
                             ],
                         },
+                        # Character-level fuzzy analyzer - for typo tolerance
+                        # Handles character-level variations and misspellings
                         "japanese_fuzzy": {
                             "type": "custom",
                             "char_filter": ["normalize_chars", "katakana_hiragana"],
-                            "tokenizer": "japanese_char_ngram",
+                            "tokenizer": "japanese_char_ngram",  # Character n-grams
                             "filter": [
                                 "cjk_width",
                                 "lowercase",
                             ],
                         },
+                        # Partial word matching - for incomplete queries
+                        # Allows matching parts of words within compound terms
                         "japanese_partial": {
                             "type": "custom",
                             "char_filter": ["normalize_chars", "katakana_hiragana"],
@@ -313,15 +339,19 @@ class JapaneseSKUIndexer:
                                 "kuromoji_baseform",
                                 "cjk_width",
                                 "lowercase",
-                                "char_ngram_filter",
+                                "char_ngram_filter",  # Creates 2-4 char n-grams
                             ],
                         },
+                        # Exact match analyzer - for precise queries
+                        # Treats entire input as single token for exact matching
                         "exact_match": {
                             "type": "custom",
                             "char_filter": ["normalize_chars", "katakana_hiragana"],
-                            "tokenizer": "keyword",
+                            "tokenizer": "keyword",  # No tokenization, exact match
                             "filter": ["cjk_width", "lowercase"],
                         },
+                        # Reading analyzer - for phonetic matching
+                        # Useful for matching different writings of same pronunciation
                         "reading_analyzer": {
                             "type": "custom",
                             "char_filter": ["normalize_chars", "katakana_hiragana"],
@@ -332,6 +362,8 @@ class JapaneseSKUIndexer:
                                 "lowercase",
                             ],
                         },
+                        # Synonym analyzer - for domain-specific term matching
+                        # Expands queries with related medical/care product terms
                         "synonym_analyzer": {
                             "type": "custom",
                             "char_filter": ["normalize_chars", "katakana_hiragana"],
@@ -340,9 +372,11 @@ class JapaneseSKUIndexer:
                                 "kuromoji_baseform",
                                 "cjk_width",
                                 "lowercase",
-                                "product_synonyms",
+                                "product_synonyms",  # Applies synonym mappings
                             ],
                         },
+                        # Romaji analyzer - for English/ASCII input matching
+                        # Converts Japanese to ASCII for cross-language search
                         "romaji_analyzer": {
                             "type": "custom",
                             "char_filter": ["normalize_chars"],
@@ -351,25 +385,33 @@ class JapaneseSKUIndexer:
                                 "kuromoji_baseform",
                                 "cjk_width",
                                 "lowercase",
-                                "asciifolding",
+                                "asciifolding",  # Converts to ASCII equivalents
                             ],
                         },
                     },
                     "filter": {
+                        # Edge n-gram filter - creates prefix tokens for autocomplete
+                        # Generates tokens like: "シャ", "シャワ", "シャワー" from "シャワー"
                         "edge_ngram_filter": {
                             "type": "edge_ngram",
                             "min_gram": 2,
                             "max_gram": 8,
                         },
+                        # Character n-gram filter - creates overlapping character sequences
+                        # Generates tokens like: "シャ", "ャワ", "ワー" from "シャワー"
                         "char_ngram_filter": {
                             "type": "ngram",
                             "min_gram": 2,
                             "max_gram": 4,
                         },
+                        # ASCII folding filter - converts accented/Japanese chars to ASCII
+                        # Helps with cross-language matching (トイレ → toilet)
                         "asciifolding": {
                             "type": "asciifolding",
-                            "preserve_original": True,
+                            "preserve_original": True,  # Keep both original and ASCII versions
                         },
+                        # Product synonym filter - expands medical/care product terminology
+                        # Maps related terms: "車椅子" ↔ "車いす" ↔ "車イス" ↔ "ウィールチェア"
                         "product_synonyms": {
                             "type": "synonym",
                             "synonyms": [
@@ -407,36 +449,49 @@ class JapaneseSKUIndexer:
             },
             "mappings": {
                 "properties": {
+                    # Primary ID field - integer identifier for each SKU
                     "id": {"type": "integer"},
+                    # Main SKU name field with multiple sub-fields for different search strategies
                     "sku_name": {
                         "type": "text",
-                        "analyzer": "japanese_standard",
-                        "search_analyzer": "japanese_partial",
+                        "analyzer": "japanese_standard",  # Default analyzer for indexing
+                        "search_analyzer": "japanese_partial",  # Different analyzer for search queries
                         "fields": {
+                            # Exact match field - for precise queries (highest priority)
                             "exact": {"type": "text", "analyzer": "exact_match"},
+                            # N-gram field - for prefix/autocomplete matching
                             "ngram": {"type": "text", "analyzer": "japanese_ngram"},
+                            # Fuzzy field - for character-level typo tolerance
                             "fuzzy": {"type": "text", "analyzer": "japanese_fuzzy"},
+                            # Partial field - for incomplete word matching
                             "partial": {"type": "text", "analyzer": "japanese_partial"},
+                            # Synonym field - for domain-specific term expansion
                             "synonym": {"type": "text", "analyzer": "synonym_analyzer"},
+                            # Romaji field - for English/ASCII cross-language search
                             "romaji": {"type": "text", "analyzer": "romaji_analyzer"},
+                            # Keyword field - for aggregations and exact filtering
                             "keyword": {"type": "keyword", "ignore_above": 256},
                         },
                     },
+                    # Original text field - preserves raw input for reference
                     "original_text": {
                         "type": "text",
                         "analyzer": "japanese_standard",
                         "fields": {"keyword": {"type": "keyword", "ignore_above": 256}},
                     },
+                    # Reading field - for phonetic variations and pronunciation matching
                     "reading": {
                         "type": "text",
                         "analyzer": "reading_analyzer",
-                        "search_analyzer": "japanese_fuzzy",
+                        "search_analyzer": "japanese_fuzzy",  # Use fuzzy for reading searches
                         "fields": {
                             "keyword": {"type": "keyword", "ignore_above": 256},
                             "romaji": {"type": "text", "analyzer": "romaji_analyzer"},
                         },
                     },
+                    # Category field - for filtering and grouping products
                     "category": {"type": "keyword"},
+                    # Timestamp fields - for data management and versioning
                     "created_at": {"type": "date"},
                     "updated_at": {"type": "date"},
                 }

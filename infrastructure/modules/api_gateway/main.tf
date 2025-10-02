@@ -34,17 +34,6 @@ resource "aws_api_gateway_resource" "sku" {
   path_part   = "sku"
 }
 
-# POST /search/sku - Main search endpoint
-resource "aws_api_gateway_method" "search_sku_post" {
-  rest_api_id   = aws_api_gateway_rest_api.this.id
-  resource_id   = aws_api_gateway_resource.sku.id
-  http_method   = "POST"
-  authorization = "COGNITO_USER_POOLS"
-  authorizer_id = aws_api_gateway_authorizer.cognito.id
-
-  request_validator_id = aws_api_gateway_request_validator.this.id
-}
-
 # GET /search/sku - Simple search endpoint
 resource "aws_api_gateway_method" "search_sku_get" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
@@ -67,17 +56,7 @@ resource "aws_api_gateway_method" "search_sku_options" {
   authorization = "NONE"
 }
 
-# Lambda integrations
-resource "aws_api_gateway_integration" "search_sku_post" {
-  rest_api_id = aws_api_gateway_rest_api.this.id
-  resource_id = aws_api_gateway_resource.sku.id
-  http_method = aws_api_gateway_method.search_sku_post.http_method
-
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_permission.api_gateway_post.source_arn
-}
-
+# Lambda integration for GET
 resource "aws_api_gateway_integration" "search_sku_get" {
   rest_api_id = aws_api_gateway_rest_api.this.id
   resource_id = aws_api_gateway_resource.sku.id
@@ -85,7 +64,7 @@ resource "aws_api_gateway_integration" "search_sku_get" {
 
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
-  uri                     = aws_lambda_permission.api_gateway_get.source_arn
+  uri                     = "arn:aws:apigateway:${data.aws_region.current.id}:lambda:path/2015-03-31/functions/${var.lambda_function_arn}/invocations"
 }
 
 # CORS integration
@@ -125,20 +104,12 @@ resource "aws_api_gateway_integration_response" "search_sku_options" {
 
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
     "method.response.header.Access-Control-Allow-Origin"  = "'${join(",", var.cors_allowed_origins)}'"
   }
 }
 
-# Lambda permissions
-resource "aws_lambda_permission" "api_gateway_post" {
-  statement_id  = "AllowExecutionFromAPIGatewayPost"
-  action        = "lambda:InvokeFunction"
-  function_name = var.lambda_function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.this.execution_arn}/*/*"
-}
-
+# Lambda permission for GET
 resource "aws_lambda_permission" "api_gateway_get" {
   statement_id  = "AllowExecutionFromAPIGatewayGet"
   action        = "lambda:InvokeFunction"
@@ -147,20 +118,18 @@ resource "aws_lambda_permission" "api_gateway_get" {
   source_arn    = "${aws_api_gateway_rest_api.this.execution_arn}/*/*"
 }
 
-# Request validator
+# Request validator (simplified for GET only)
 resource "aws_api_gateway_request_validator" "this" {
   name                        = "${var.app_name}-request-validator"
   rest_api_id                 = aws_api_gateway_rest_api.this.id
-  validate_request_body       = true
+  validate_request_body       = false
   validate_request_parameters = true
 }
 
-# API Gateway Deployment
+# API Gateway Deployment (GET only)
 resource "aws_api_gateway_deployment" "this" {
   depends_on = [
-    aws_api_gateway_method.search_sku_post,
     aws_api_gateway_method.search_sku_get,
-    aws_api_gateway_integration.search_sku_post,
     aws_api_gateway_integration.search_sku_get,
   ]
 
@@ -170,9 +139,7 @@ resource "aws_api_gateway_deployment" "this" {
     redeployment = sha1(jsonencode([
       aws_api_gateway_resource.search.id,
       aws_api_gateway_resource.sku.id,
-      aws_api_gateway_method.search_sku_post.id,
       aws_api_gateway_method.search_sku_get.id,
-      aws_api_gateway_integration.search_sku_post.id,
       aws_api_gateway_integration.search_sku_get.id,
     ]))
   }

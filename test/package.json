@@ -1,0 +1,24 @@
+{
+  "name": "fuzzy-sku-test",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test:auth": "ts-node auth.test.ts",
+    "test:debug": "node --inspect-brk -r ts-node/register auth.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.9",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.5.3"
+  },
+  "dependencies": {
+    "@aws-amplify/auth": "^6.0.0",
+    "@aws-sdk/client-cognito-identity": "^3.400.0",
+    "@aws-sdk/client-s3": "^3.400.0",
+    "@aws-sdk/credential-providers": "^3.400.0",
+    "@aws-sdk/types": "^3.400.0",
+    "aws-amplify": "^6.0.0"
+  }
+}
