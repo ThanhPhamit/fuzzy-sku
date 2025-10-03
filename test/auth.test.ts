@@ -3,7 +3,10 @@ import { AuthService } from './auth-services';
 async function testAuth() {
   const authService = new AuthService();
   try {
-    const signInOutput = await AuthService.signIn('fuzzy-sku-poc', 'XXXX');
+    const signInOutput = await AuthService.signIn(
+      'fuzzy-sku-poc',
+      '$mpn2aHERV?y',
+    );
     console.log('Sign-in successful:', signInOutput);
 
     const idToken = await authService.getIdToken();

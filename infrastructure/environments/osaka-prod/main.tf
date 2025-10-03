@@ -5,6 +5,9 @@ module "cognito_auth" {
   app_name = local.name_prefix
   tags     = local.common_tags
 
+  # Enable email-based login
+  allow_email_as_username = true
+
   # Production Cognito configuration
   mfa_configuration = var.cognito_mfa_configuration
 
@@ -87,30 +90,50 @@ module "lambda_search" {
   reserved_concurrency = var.lambda_reserved_concurrency
 }
 
-# API Gateway Module
+# API Gateway Module - Using new flexible module
 module "api_gateway" {
   source = "../../modules/api_gateway"
 
   app_name = local.name_prefix
   tags     = local.common_tags
 
-  # Lambda integration
-  lambda_function_arn  = module.lambda_search.lambda_function_arn
-  lambda_function_name = module.lambda_search.lambda_function_name
-
   # Cognito integration
   cognito_user_pool_arn = module.cognito_auth.user_pool_arn
   cognito_user_pool_id  = module.cognito_auth.user_pool_id
 
+  # Define API routes - flexible configuration for multiple endpoints
+  api_routes = [
+    {
+      path_parts           = ["search", "sku"]
+      http_method          = "GET"
+      lambda_function_arn  = module.lambda_search.lambda_function_arn
+      lambda_function_name = module.lambda_search.lambda_function_name
+      authorization        = "COGNITO_USER_POOLS"
+      request_parameters = {
+        "method.request.querystring.q" = true
+      }
+      request_validator = "query"
+    }
+  ]
+
   # Production API Gateway configuration
+  api_description      = "Japanese SKU Fuzzy Search API - Production Environment"
   stage_name           = var.api_stage_name
   enable_cors          = var.enable_cors
   cors_allowed_origins = var.cors_allowed_origins
+  cors_allowed_headers = "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+
+  # Throttling configuration
   throttle_burst_limit = var.api_throttle_burst_limit
   throttle_rate_limit  = var.api_throttle_rate_limit
-  enable_logging       = true
 
-  api_description = "Japanese SKU Fuzzy Search API - Production Environment"
+  # Logging and monitoring
+  enable_logging      = true
+  log_retention_days  = var.log_retention_days
+  enable_xray_tracing = var.enable_xray_tracing
+
+  # Security
+  enable_api_key = false # Set to true if you want additional API key layer
 }
 
 # CloudWatch Dashboard for Production Monitoring

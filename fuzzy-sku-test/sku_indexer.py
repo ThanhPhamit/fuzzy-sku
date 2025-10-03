@@ -449,8 +449,6 @@ class JapaneseSKUIndexer:
             },
             "mappings": {
                 "properties": {
-                    # Primary ID field - integer identifier for each SKU
-                    "id": {"type": "integer"},
                     # Main SKU name field with multiple sub-fields for different search strategies
                     "sku_name": {
                         "type": "text",
@@ -473,27 +471,8 @@ class JapaneseSKUIndexer:
                             "keyword": {"type": "keyword", "ignore_above": 256},
                         },
                     },
-                    # Original text field - preserves raw input for reference
-                    "original_text": {
-                        "type": "text",
-                        "analyzer": "japanese_standard",
-                        "fields": {"keyword": {"type": "keyword", "ignore_above": 256}},
-                    },
-                    # Reading field - for phonetic variations and pronunciation matching
-                    "reading": {
-                        "type": "text",
-                        "analyzer": "reading_analyzer",
-                        "search_analyzer": "japanese_fuzzy",  # Use fuzzy for reading searches
-                        "fields": {
-                            "keyword": {"type": "keyword", "ignore_above": 256},
-                            "romaji": {"type": "text", "analyzer": "romaji_analyzer"},
-                        },
-                    },
-                    # Category field - for filtering and grouping products
-                    "category": {"type": "keyword"},
-                    # Timestamp fields - for data management and versioning
-                    "created_at": {"type": "date"},
-                    "updated_at": {"type": "date"},
+                    # Timestamp field - when this SKU was indexed
+                    "indexed_at": {"type": "date"},
                 }
             },
         }
@@ -536,22 +515,9 @@ class JapaneseSKUIndexer:
                     if row and row[0].strip():
                         sku_name = row[0].strip()
 
-                        # Extract product info for better categorization
-                        category = "unknown"
-                        if any(x in sku_name for x in ["便座", "トイレ", "KX", "FX"]):
-                            category = "toilet_products"
-                        elif any(x in sku_name for x in ["暖房", "温水"]):
-                            category = "heating_products"
-                        elif any(x in sku_name for x in ["ポータブル", "フレーム"]):
-                            category = "portable_products"
-
                         product = {
-                            "id": row_id,
                             "sku_name": sku_name,
-                            "original_text": sku_name,
-                            "category": category,
-                            "created_at": datetime.now().isoformat(),
-                            "updated_at": datetime.now().isoformat(),
+                            "indexed_at": datetime.now().isoformat(),
                         }
                         products.append(product)
 
@@ -565,13 +531,13 @@ class JapaneseSKUIndexer:
                 batch = products[i : i + batch_size]
                 bulk_body = []
 
-                for product in batch:
+                for idx, product in enumerate(batch, start=i + 1):
                     bulk_body.extend(
                         [
                             {
                                 "index": {
                                     "_index": self.index_name,
-                                    "_id": product["id"],
+                                    "_id": idx,  # Use sequential index as ID
                                 }
                             },
                             product,

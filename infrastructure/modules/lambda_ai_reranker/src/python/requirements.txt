@@ -1,0 +1,2 @@
+# No external dependencies required
+# boto3 and botocore are already included in AWS Lambda Python runtime

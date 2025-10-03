@@ -1,12 +1,27 @@
 # API Gateway outputs
 output "api_gateway_url" {
-  description = "URL of the API Gateway"
+  description = "Base URL of the API Gateway"
   value       = module.api_gateway.api_gateway_url
+}
+
+output "api_gateway_id" {
+  description = "ID of the API Gateway"
+  value       = module.api_gateway.api_gateway_id
 }
 
 output "search_endpoint_url" {
   description = "Full URL for the search endpoint"
-  value       = module.api_gateway.search_endpoint_url
+  value       = module.api_gateway.api_endpoints["GET /search/sku"]
+}
+
+output "all_api_endpoints" {
+  description = "All configured API endpoints"
+  value       = module.api_gateway.api_endpoints
+}
+
+output "api_gateway_stage" {
+  description = "API Gateway stage name"
+  value       = module.api_gateway.api_gateway_stage_name
 }
 
 # Cognito outputs

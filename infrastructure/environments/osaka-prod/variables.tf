@@ -53,7 +53,7 @@ variable "enable_cors" {
 variable "cors_allowed_origins" {
   description = "Allowed origins for CORS"
   type        = list(string)
-  default     = []
+  default     = ["http://localhost:5173"]
 }
 
 # Lambda configuration
