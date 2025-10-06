@@ -61,6 +61,13 @@ export class AuthService {
   ): Promise<CognitoUser | undefined> {
     try {
       const user = (await Auth.signIn(userName, password)) as CognitoUser;
+
+      // Check if user needs to complete new password challenge
+      if (user.challengeName === 'NEW_PASSWORD_REQUIRED') {
+        // Return user with challenge for frontend to handle
+        return user;
+      }
+
       const session = user.getSignInUserSession();
 
       if (session) {
@@ -83,7 +90,58 @@ export class AuthService {
       return undefined;
     } catch (error) {
       console.error('Login error:', error);
+      throw error; // Re-throw so component can handle it
+    }
+  }
+
+  public async completeNewPasswordChallenge(
+    user: CognitoUser,
+    newPassword: string,
+  ): Promise<CognitoUser | undefined> {
+    try {
+      // Wrap the callback-based API in a Promise
+      await new Promise<void>((resolve, reject) => {
+        user.completeNewPasswordChallenge(
+          newPassword,
+          {}, // Required attributes (empty object if none required)
+          {
+            onSuccess: () => {
+              console.log('Password challenge completed successfully');
+              resolve();
+            },
+            onFailure: (err: any) => {
+              console.error('Password challenge failed:', err);
+              reject(err);
+            },
+          },
+        );
+      });
+
+      // Get the updated user with session
+      const currentUser = await Auth.currentAuthenticatedUser();
+      const session = currentUser.getSignInUserSession();
+
+      if (session) {
+        this.authState = {
+          user: currentUser,
+          jwtToken: session.getIdToken().getJwtToken(),
+          accessToken: session.getAccessToken().getJwtToken(),
+          refreshToken: session.getRefreshToken().getToken(),
+          expirationTime: session.getAccessToken().getExpiration() * 1000,
+        };
+
+        // Save to localStorage
+        this.saveAuthState();
+
+        // Setup automatic token refresh
+        this.setupTokenRefresh();
+
+        return currentUser;
+      }
       return undefined;
+    } catch (error) {
+      console.error('Complete new password challenge error:', error);
+      throw error;
     }
   }
 
@@ -105,6 +163,11 @@ export class AuthService {
   }
 
   public getJwtToken(): string | null {
+    return this.isTokenValid() ? this.authState.jwtToken : null;
+  }
+
+  // For API Gateway authorization, use ID token instead of access token
+  public getIdToken(): string | null {
     return this.isTokenValid() ? this.authState.jwtToken : null;
   }
 

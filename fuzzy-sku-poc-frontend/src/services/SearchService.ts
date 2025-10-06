@@ -2,25 +2,21 @@ import { AuthService } from './AuthService';
 import config from '../config';
 
 export interface SearchResult {
-  _id: string;
-  _source: {
-    syohin_code: string;
-    syohin_name_1: string;
-    syohin_name_2?: string;
-    syohin_name_3?: string;
-    [key: string]: any;
+  id: string;
+  sku_name: string;
+  score: number;
+  highlights: {
+    sku_name?: string[];
   };
-  _score: number;
 }
 
 export interface SearchResponse {
-  hits: {
-    total: {
-      value: number;
-      relation: string;
-    };
-    hits: SearchResult[];
-  };
+  query: string;
+  total_hits: number;
+  max_score: number;
+  results: SearchResult[];
+  took: number;
+  timed_out: boolean;
 }
 
 export class SearchService {
@@ -42,22 +38,24 @@ export class SearchService {
         throw new Error('User not authenticated');
       }
 
-      // Get access token
-      const accessToken = this.authService.getAccessToken();
-      if (!accessToken) {
-        throw new Error('No valid access token');
+      // Get ID token for API Gateway authorization
+      const idToken = this.authService.getIdToken();
+      if (!idToken) {
+        throw new Error('No valid ID token');
       }
 
       // Construct the search URL
-      const searchUrl = new URL('/search/sku', this.baseUrl);
-      searchUrl.searchParams.append('q', query);
-      searchUrl.searchParams.append('size', size.toString());
+      const searchUrl = `${this.baseUrl}/search/sku?q=${encodeURIComponent(
+        query,
+      )}&size=${size}`;
+
+      console.log('Search URL:', searchUrl); // Debug log
 
       // Make the API request
-      const response = await fetch(searchUrl.toString(), {
+      const response = await fetch(searchUrl, {
         method: 'GET',
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${idToken}`,
           'Content-Type': 'application/json',
         },
       });
@@ -74,6 +72,7 @@ export class SearchService {
       }
 
       const data: SearchResponse = await response.json();
+      console.log('Search response:', data); // Debug log
       return data;
     } catch (error) {
       console.error('Search error:', error);
