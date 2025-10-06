@@ -18,7 +18,17 @@ class JapaneseSKUSearcher:
         self.opensearch_endpoint = os.environ.get("OPENSEARCH_ENDPOINT")
         self.index_name = os.environ.get("INDEX_NAME", "sku-master")
         self.region = os.environ.get("AWS_REGION", "ap-northeast-3")
+        self.confidence_threshold = float(
+            os.environ.get("CONFIDENCE_THRESHOLD", "25.0")
+        )
+        self.score_gap_ratio = float(os.environ.get("SCORE_GAP_RATIO", "2.0"))
+        self.ai_reranker_function = os.environ.get("AI_RERANKER_FUNCTION_NAME", "")
         self.client = self._get_opensearch_client()
+        self.lambda_client = (
+            boto3.client("lambda", region_name=self.region)
+            if self.ai_reranker_function
+            else None
+        )
 
     def _get_opensearch_client(self) -> OpenSearch:
         """Initialize OpenSearch client with AWS authentication"""
@@ -86,6 +96,8 @@ class JapaneseSKUSearcher:
                 index=self.index_name, body=search_body, timeout=30
             )
 
+            print("Search response:", json.dumps(response, ensure_ascii=False))
+
             # Process and return results
             return self._process_search_results(response, query)
 
@@ -122,6 +134,75 @@ class JapaneseSKUSearcher:
         logger.debug(f"Search query: {json.dumps(search_body, ensure_ascii=False)}")
         return search_body
 
+    def _check_confidence(self, results: List[Dict]) -> tuple:
+        """
+        Check if OpenSearch results have high confidence
+        Returns: (is_confident, reason)
+        """
+        if not results or len(results) == 0:
+            return False, "No results"
+
+        top_score = results[0]["score"]
+
+        # Check first condition: topScore > threshold
+        if top_score <= self.confidence_threshold:
+            return False, f"Low score: {top_score:.2f} <= {self.confidence_threshold}"
+
+        # Check second condition: score gap ratio
+        if len(results) >= 2:
+            second_score = results[1]["score"]
+            ratio = top_score / second_score if second_score > 0 else float("inf")
+
+            if ratio <= self.score_gap_ratio:
+                return (
+                    False,
+                    f"Small gap: ratio {ratio:.2f} <= {self.score_gap_ratio} (top={top_score:.2f}, second={second_score:.2f})",
+                )
+
+            return (
+                True,
+                f"High confidence: score {top_score:.2f} > {self.confidence_threshold} AND ratio {ratio:.2f} > {self.score_gap_ratio}",
+            )
+
+        # Only one result but high score
+        return (
+            True,
+            f"Single high-score result: {top_score:.2f} > {self.confidence_threshold}",
+        )
+
+    def _invoke_ai_reranker(self, query: str, results: List[Dict]) -> List[Dict]:
+        """Invoke AI reranker Lambda function"""
+        try:
+            if not self.lambda_client or not self.ai_reranker_function:
+                logger.warning("AI reranker not configured, returning original results")
+                return results
+
+            payload = {"query": query, "results": results}
+
+            logger.info(f"Invoking AI reranker for query: '{query}'")
+
+            response = self.lambda_client.invoke(
+                FunctionName=self.ai_reranker_function,
+                InvocationType="RequestResponse",
+                Payload=json.dumps(payload, ensure_ascii=False),
+            )
+
+            response_payload = json.loads(response["Payload"].read())
+
+            if response["StatusCode"] == 200:
+                body = json.loads(response_payload.get("body", "{}"))
+                reranked_results = body.get("results", results)
+                logger.info(f"AI reranking completed: {len(reranked_results)} results")
+                return reranked_results
+            else:
+                logger.error(f"AI reranker failed with status {response['StatusCode']}")
+                return results
+
+        except Exception as e:
+            logger.error(f"AI reranker invocation failed: {str(e)}")
+            # Fallback to original results
+            return results
+
     def _process_search_results(
         self, response: Dict, original_query: str
     ) -> Dict[str, Any]:
@@ -147,6 +228,20 @@ class JapaneseSKUSearcher:
 
             results.append(result_item)
 
+        # Check confidence
+        is_confident, confidence_reason = self._check_confidence(results)
+
+        # If not confident, invoke AI reranker
+        if not is_confident and self.ai_reranker_function:
+            logger.info(f"Low confidence: {confidence_reason} - invoking AI reranker")
+            results = self._invoke_ai_reranker(original_query, results)
+            reranked = True
+        else:
+            logger.info(
+                f"High confidence: {confidence_reason} - returning OpenSearch results"
+            )
+            reranked = False
+
         # Build response
         processed_response = {
             "query": original_query,
@@ -155,6 +250,13 @@ class JapaneseSKUSearcher:
             "results": results,
             "took": response.get("took", 0),
             "timed_out": response.get("timed_out", False),
+            "confidence": {
+                "is_high": is_confident,
+                "threshold": self.confidence_threshold,
+                "score_gap_ratio": self.score_gap_ratio,
+                "reason": confidence_reason,
+                "reranked": reranked,
+            },
         }
 
         logger.info(f"Search completed: {total_hits} hits for query '{original_query}'")
@@ -224,15 +326,16 @@ def _parse_request(event: Dict[str, Any]) -> tuple:
 
 
 def _create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
-    """Create standardized Lambda response"""
+    """Create standardized Lambda response with CORS headers"""
 
     response = {
         "statusCode": status_code,
         "headers": {
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Allow-Origin": "*",  # Allow all origins - API Gateway will enforce the actual origin
+            "Access-Control-Allow-Methods": "GET,OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+            "Access-Control-Allow-Credentials": "false",
         },
         "body": json.dumps(body, ensure_ascii=False, separators=(",", ":")),
     }

@@ -53,7 +53,7 @@ variable "enable_cors" {
 variable "cors_allowed_origins" {
   description = "Allowed origins for CORS"
   type        = list(string)
-  default     = []
+  default     = ["http://localhost:5173"]
 }
 
 # Lambda configuration
@@ -66,13 +66,13 @@ variable "lambda_timeout" {
 variable "lambda_memory_size" {
   description = "Lambda function memory size in MB"
   type        = number
-  default     = 1024 # Higher for production
+  default     = 256
 }
 
 variable "lambda_reserved_concurrency" {
   description = "Lambda reserved concurrency"
   type        = number
-  default     = 20 # Higher for production
+  default     = 20
 }
 
 # Cognito configuration

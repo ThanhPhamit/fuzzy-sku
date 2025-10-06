@@ -159,3 +159,10 @@ variable "deletion_protection" {
     error_message = "Deletion protection must be ACTIVE or INACTIVE."
   }
 }
+
+# Email as username
+variable "allow_email_as_username" {
+  description = "Allow users to sign in with email address instead of username"
+  type        = bool
+  default     = false
+}

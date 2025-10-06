@@ -1,12 +1,22 @@
 # API Gateway outputs
 output "api_gateway_url" {
-  description = "URL of the API Gateway"
+  description = "Base URL of the API Gateway"
   value       = module.api_gateway.api_gateway_url
 }
 
 output "search_endpoint_url" {
   description = "Full URL for the search endpoint"
-  value       = module.api_gateway.search_endpoint_url
+  value       = module.api_gateway.api_endpoints["GET /search/sku"]
+}
+
+output "all_api_endpoints" {
+  description = "All configured API endpoints"
+  value       = module.api_gateway.api_endpoints
+}
+
+output "api_gateway_stage" {
+  description = "API Gateway stage name"
+  value       = module.api_gateway.api_gateway_stage_name
 }
 
 # Cognito outputs
@@ -37,12 +47,12 @@ output "cognito_logout_url" {
 
 # Lambda outputs
 output "lambda_function_name" {
-  description = "Name of the Lambda function"
+  description = "Name of the Lambda search function"
   value       = module.lambda_search.lambda_function_name
 }
 
 output "lambda_function_arn" {
-  description = "ARN of the Lambda function"
+  description = "ARN of the Lambda search function"
   value       = module.lambda_search.lambda_function_arn
 }
 
@@ -57,9 +67,14 @@ output "api_gateway_log_group" {
   value       = module.api_gateway.log_group_name
 }
 
-output "lambda_log_group" {
-  description = "CloudWatch log group for Lambda"
+output "lambda_search_log_group" {
+  description = "CloudWatch log group for Lambda search function"
   value       = module.lambda_search.log_group_name
+}
+
+output "ai_reranker_log_group" {
+  description = "CloudWatch log group for AI reranker Lambda function"
+  value       = module.lambda_ai_reranker.log_group_name
 }
 
 # Security outputs

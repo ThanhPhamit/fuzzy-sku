@@ -1,3 +1,5 @@
+# Lambda AI Reranker Module Variables
+
 # Required variables: app_name, tags
 variable "app_name" {
   description = "Application name for Lambda naming"
@@ -7,7 +9,7 @@ variable "app_name" {
 variable "function_name" {
   description = "Lambda function name (will be prefixed with app_name)"
   type        = string
-  default     = "search-function"
+  default     = "ai-reranker"
 }
 
 variable "tags" {
@@ -16,19 +18,6 @@ variable "tags" {
   default     = {}
 }
 
-# OpenSearch configuration
-variable "opensearch_endpoint" {
-  description = "OpenSearch domain endpoint"
-  type        = string
-}
-
-variable "opensearch_index_name" {
-  description = "OpenSearch index name for SKU data"
-  type        = string
-  default     = "japanese_sku_index"
-}
-
-# Lambda configuration
 variable "runtime" {
   description = "Lambda runtime"
   type        = string
@@ -70,42 +59,37 @@ variable "memory_size" {
 variable "reserved_concurrency" {
   description = "Reserved concurrency for Lambda function"
   type        = number
-  default     = 10
+  default     = -1
 }
 
-# VPC configuration (optional)
-variable "vpc_config" {
-  description = "VPC configuration for Lambda"
-  type = object({
-    subnet_ids         = list(string)
-    security_group_ids = list(string)
-  })
-  default = null
+variable "bedrock_region" {
+  description = "AWS region for Bedrock client (supports cross-region inference)"
+  type        = string
+  default     = "ap-northeast-3"
 }
 
-variable "policy_statements" {
-  description = "IAM policy statements for Lambda"
-  type        = any
-  default     = {}
+variable "bedrock_model_id" {
+  description = "Bedrock model ID for Claude"
+  type        = string
+  default     = "anthropic.claude-sonnet-4-5-v1:0"
 }
 
-variable "layers" {
-  description = "List of Lambda layer ARNs"
-  type        = list(string)
-  default     = []
+variable "confidence_threshold" {
+  description = "Minimum top score for high confidence (topScore > threshold)"
+  type        = number
+  default     = 25.0
 }
 
-variable "build_in_docker" {
-  description = "Build Lambda package in Docker for consistency"
-  type        = bool
-  default     = true
+variable "score_gap_ratio" {
+  description = "Minimum ratio between 1st and 2nd scores (ratio > gap_ratio)"
+  type        = number
+  default     = 2.0
 }
 
-variable "environment_variables" {
-  description = "Environment variables for Lambda function"
-  type        = map(string)
-  default     = {}
-  sensitive   = true
+variable "log_level" {
+  description = "Lambda logging level (DEBUG, INFO, WARNING, ERROR)"
+  type        = string
+  default     = "INFO"
 }
 
 variable "log_retention_days" {
@@ -135,30 +119,46 @@ variable "alarm_actions" {
 variable "description" {
   description = "Description for the Lambda function"
   type        = string
-  default     = "Japanese SKU fuzzy search function"
+  default     = "AI reranker for Japanese SKU search using Bedrock Claude"
 }
 
-variable "log_level" {
-  description = "Log level for Lambda function"
-  type        = string
-  default     = "INFO"
+# VPC configuration (optional)
+variable "vpc_config" {
+  description = "VPC configuration for Lambda"
+  type = object({
+    subnet_ids         = list(string)
+    security_group_ids = list(string)
+  })
+  default = null
+}
+
+variable "policy_statements" {
+  description = "Additional IAM policy statements for Lambda"
+  type        = any
+  default     = {}
+}
+
+variable "layers" {
+  description = "List of Lambda layer ARNs"
+  type        = list(string)
+  default     = []
+}
+
+variable "build_in_docker" {
+  description = "Build Lambda package in Docker for consistency"
+  type        = bool
+  default     = true
+}
+
+variable "environment_variables" {
+  description = "Additional environment variables for Lambda function"
+  type        = map(string)
+  default     = {}
+  sensitive   = true
 }
 
 variable "environment" {
   description = "Environment name"
   type        = string
   default     = "staging"
-}
-
-# AI Reranker Lambda configuration
-variable "ai_reranker_function_name" {
-  description = "Name of the AI reranker Lambda function to invoke for low-confidence results"
-  type        = string
-  default     = ""
-}
-
-variable "ai_reranker_function_arn" {
-  description = "ARN of the AI reranker Lambda function (for IAM permissions)"
-  type        = string
-  default     = ""
 }

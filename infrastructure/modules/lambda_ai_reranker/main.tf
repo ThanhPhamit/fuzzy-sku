@@ -17,32 +17,48 @@ module "lambda" {
 
   # Environment variables
   environment_variables = merge(var.environment_variables, {
-    OPENSEARCH_ENDPOINT       = var.opensearch_endpoint
-    INDEX_NAME                = var.opensearch_index_name
-    SEARCH_REGION             = data.aws_region.current.id
-    LOG_LEVEL                 = var.log_level
-    ENVIRONMENT               = var.environment
-    AI_RERANKER_FUNCTION_NAME = var.ai_reranker_function_name
+    BEDROCK_REGION       = var.bedrock_region
+    BEDROCK_MODEL_ID     = var.bedrock_model_id
+    CONFIDENCE_THRESHOLD = tostring(var.confidence_threshold)
+    SCORE_GAP_RATIO      = tostring(var.score_gap_ratio)
+    LOG_LEVEL            = var.log_level
+    ENVIRONMENT          = var.environment
   })
 
   # VPC configuration (conditional)
   vpc_subnet_ids         = var.vpc_config != null ? var.vpc_config.subnet_ids : null
   vpc_security_group_ids = var.vpc_config != null ? var.vpc_config.security_group_ids : null
 
-  # IAM policies for OpenSearch, X-Ray, and Lambda invocation
+  # IAM policies for Bedrock and X-Ray
   attach_policy_statements = true
   policy_statements = merge({
-    opensearch = {
+    bedrock_models = {
       effect = "Allow"
       actions = [
-        "es:ESHttpPost",
-        "es:ESHttpPut",
-        "es:ESHttpGet",
-        "es:ESHttpHead"
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
       ]
       resources = [
-        "arn:aws:es:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:domain/*"
+        "arn:aws:bedrock:*::foundation-model/anthropic.claude-*"
       ]
+    }
+    bedrock_inference_profiles = {
+      effect = "Allow"
+      actions = [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ]
+      resources = [
+        "arn:aws:bedrock:*:${data.aws_caller_identity.current.account_id}:inference-profile/*"
+      ]
+    }
+    bedrock_list = {
+      effect = "Allow"
+      actions = [
+        "bedrock:GetFoundationModel",
+        "bedrock:ListFoundationModels"
+      ]
+      resources = ["*"]
     }
     xray = {
       effect = "Allow"
@@ -52,15 +68,6 @@ module "lambda" {
       ]
       resources = ["*"]
     }
-    lambda_invoke = var.ai_reranker_function_arn != "" ? {
-      effect = "Allow"
-      actions = [
-        "lambda:InvokeFunction"
-      ]
-      resources = [
-        var.ai_reranker_function_arn
-      ]
-    } : null
   }, var.policy_statements)
 
   # Lambda layers
@@ -79,7 +86,7 @@ module "lambda" {
   tags = merge(var.tags, {
     Name      = "${var.app_name}-${var.function_name}"
     Runtime   = var.runtime
-    Component = "lambda"
+    Component = "lambda-ai-reranker"
     ManagedBy = "terraform"
   })
 }

@@ -16,6 +16,9 @@ resource "random_string" "domain_suffix" {
 resource "aws_cognito_user_pool" "this" {
   name = local.user_pool_name
 
+  # Allow users to sign in with email address
+  username_attributes = var.allow_email_as_username ? ["email"] : null
+
   # Password policy
   password_policy {
     minimum_length                   = var.password_policy.minimum_length

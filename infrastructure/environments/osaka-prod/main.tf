@@ -5,6 +5,9 @@ module "cognito_auth" {
   app_name = local.name_prefix
   tags     = local.common_tags
 
+  # Enable email-based login
+  allow_email_as_username = true
+
   # Production Cognito configuration
   mfa_configuration = var.cognito_mfa_configuration
 
@@ -41,6 +44,43 @@ module "cognito_auth" {
   deletion_protection = "INACTIVE"
 }
 
+# Lambda AI Reranker Module
+module "lambda_ai_reranker" {
+  source = "../../modules/lambda_ai_reranker"
+
+  app_name      = local.name_prefix
+  function_name = "ai-reranker"
+  description   = "AI reranker for Japanese SKU search using Bedrock Claude - production"
+  tags          = local.common_tags
+
+  # Lambda configuration
+  runtime     = "python3.12"
+  handler     = "lambda_function.lambda_handler"
+  timeout     = var.lambda_timeout
+  memory_size = 512
+  log_level   = "INFO"
+  environment = var.environment
+
+  # Bedrock configuration - using global inference profile for Claude Sonnet 4.5
+  bedrock_region   = var.aws_region                                     # Use ap-northeast-3 (local region)
+  bedrock_model_id = "global.anthropic.claude-sonnet-4-5-20250929-v1:0" # Global inference profile for Claude Sonnet 4.5
+
+  # Confidence thresholds
+  confidence_threshold = 25.0
+  score_gap_ratio      = 2.0
+
+  # Monitoring and logging
+  log_retention_days  = var.log_retention_days
+  enable_xray_tracing = var.enable_xray_tracing
+  enable_monitoring   = true
+
+  # Build configuration
+  build_in_docker = true
+
+  # Reserved concurrency
+  reserved_concurrency = -1
+}
+
 # Lambda Search Function Module
 module "lambda_search" {
   source = "../../modules/lambda_search"
@@ -73,6 +113,10 @@ module "lambda_search" {
     security_group_ids = var.security_group_ids
   } : null
 
+  # AI Reranker configuration
+  ai_reranker_function_name = module.lambda_ai_reranker.lambda_function_name
+  ai_reranker_function_arn  = module.lambda_ai_reranker.lambda_function_arn
+
   # Production environment variables
   environment_variables = {
     ENVIRONMENT = var.environment
@@ -85,32 +129,64 @@ module "lambda_search" {
 
   # Reserved concurrency
   reserved_concurrency = var.lambda_reserved_concurrency
+
+  # Ensure AI reranker is created first
+  depends_on = [module.lambda_ai_reranker]
 }
 
-# API Gateway Module
+# Additional Lambda permission for search function to invoke reranker
+resource "aws_lambda_permission" "search_invoke_reranker" {
+  statement_id  = "AllowSearchLambdaInvokeReranker"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambda_ai_reranker.lambda_function_name
+  principal     = "lambda.amazonaws.com"
+  source_arn    = module.lambda_search.lambda_function_arn
+}
+
+# API Gateway Module - Using new flexible module
 module "api_gateway" {
   source = "../../modules/api_gateway"
 
   app_name = local.name_prefix
   tags     = local.common_tags
 
-  # Lambda integration
-  lambda_function_arn  = module.lambda_search.lambda_function_arn
-  lambda_function_name = module.lambda_search.lambda_function_name
-
   # Cognito integration
   cognito_user_pool_arn = module.cognito_auth.user_pool_arn
   cognito_user_pool_id  = module.cognito_auth.user_pool_id
 
+  # Define API routes - flexible configuration for multiple endpoints
+  api_routes = [
+    {
+      path_parts           = ["search", "sku"]
+      http_method          = "GET"
+      lambda_function_arn  = module.lambda_search.lambda_function_arn
+      lambda_function_name = module.lambda_search.lambda_function_name
+      authorization        = "COGNITO_USER_POOLS"
+      request_parameters = {
+        "method.request.querystring.q" = true
+      }
+      request_validator = "query"
+    }
+  ]
+
   # Production API Gateway configuration
+  api_description      = "Japanese SKU Fuzzy Search API - Production Environment"
   stage_name           = var.api_stage_name
   enable_cors          = var.enable_cors
   cors_allowed_origins = var.cors_allowed_origins
+  cors_allowed_headers = "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+
+  # Throttling configuration
   throttle_burst_limit = var.api_throttle_burst_limit
   throttle_rate_limit  = var.api_throttle_rate_limit
-  enable_logging       = true
 
-  api_description = "Japanese SKU Fuzzy Search API - Production Environment"
+  # Logging and monitoring
+  enable_logging      = true
+  log_retention_days  = var.log_retention_days
+  enable_xray_tracing = var.enable_xray_tracing
+
+  # Security
+  enable_api_key = false # Set to true if you want additional API key layer
 }
 
 # CloudWatch Dashboard for Production Monitoring
