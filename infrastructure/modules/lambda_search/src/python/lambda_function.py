@@ -106,20 +106,69 @@ class JapaneseSKUSearcher:
             raise
 
     def _build_search_query(self, query: str, size: int) -> Dict[str, Any]:
-        """Build simple OpenSearch query for SKU name search only (like validate_index)"""
+        """
+        Build optimized OpenSearch query for Japanese SKU matching
+        Optimized for bi-directional Japanese ↔ Latin matching
+        """
 
-        # Simple search strategy similar to your indexer's validate_index method
+        # ===== STRATEGY 1: Japanese Field Matching =====
+        # Search in main Japanese fields with various analyzers
+        japanese_queries = [
+            # Main field - highest boost for exact matches
+            {"match": {"sku_name": {"query": query, "boost": 5.0}}},
+            # Exact match - for precise queries
+            {"match": {"sku_name.exact": {"query": query, "boost": 4.0}}},
+            # N-gram - for prefix/autocomplete matching
+            {"match": {"sku_name.ngram": {"query": query, "boost": 3.0}}},
+            # Fuzzy - for character-level typo tolerance
+            {"match": {"sku_name.fuzzy": {"query": query, "boost": 2.5}}},
+            # Partial - for incomplete word matching
+            {"match": {"sku_name.partial": {"query": query, "boost": 3.0}}},
+            # Synonym - for domain-specific term expansion
+            {"match": {"sku_name.synonym": {"query": query, "boost": 2.5}}},
+        ]
+
+        # ===== STRATEGY 2: Romaji/Latin Field Matching =====
+        # These fields use analyzers that convert Japanese → Romaji at INDEX time
+        # Query will be converted by field's search_analyzer automatically
+        # NO need to set "analyzer" here - let OpenSearch use field's analyzer!
+        romaji_queries = [
+            # Romaji field - Japanese text indexed as romaji
+            {"match": {"sku_name.romaji": {"query": query, "boost": 3.0}}},
+            # Latin field - pure romaji conversion
+            {"match": {"sku_name.latin": {"query": query, "boost": 3.0}}},
+            # Latin N-gram - KEY for substring matching (もぐっち → MOGU)
+            # This is the most important field for Japanese → Latin brand matching
+            {"match": {"sku_name.latin_ngram": {"query": query, "boost": 5.0}}},
+            # Romaji Edge N-gram - CRITICAL for prefix matching (もぐっち → MOGU)
+            # Allows partial Japanese input to match Latin brand names
+            # Example: "もぐっち"→"mogu" matches "MOGU" brand via edge n-grams
+            {"match": {"sku_name.romaji_ngram": {"query": query, "boost": 4.0}}},
+        ]
+
+        # ===== STRATEGY 3: Fuzzy Fallback (Low Priority) =====
+        # Only used as last resort for edge cases
+        # Keep boost low (1.0-1.5) to avoid performance issues
+        fallback_queries = [
+            # Fuzzy matching for typos
+            {
+                "fuzzy": {
+                    "sku_name": {"value": query, "fuzziness": "AUTO", "boost": 1.2}
+                }
+            },
+        ]
+
+        # Combine all strategies
+        should_queries = []
+        should_queries.extend(japanese_queries)
+        should_queries.extend(romaji_queries)
+        should_queries.extend(fallback_queries)
+
         search_body = {
             "query": {
                 "bool": {
-                    "should": [
-                        {"match": {"sku_name": {"query": query, "boost": 3.0}}},
-                        {"match": {"sku_name.exact": {"query": query, "boost": 2.0}}},
-                        {"match": {"sku_name.ngram": {"query": query, "boost": 1.5}}},
-                        {"match": {"sku_name.fuzzy": {"query": query, "boost": 1.0}}},
-                        {"match": {"sku_name.partial": {"query": query, "boost": 1.2}}},
-                        {"match": {"sku_name.synonym": {"query": query, "boost": 1.8}}},
-                    ]
+                    "should": should_queries,
+                    "minimum_should_match": 1,
                 }
             },
             "size": size,
@@ -228,19 +277,19 @@ class JapaneseSKUSearcher:
 
             results.append(result_item)
 
-        # Check confidence
-        is_confident, confidence_reason = self._check_confidence(results)
+        # # Check confidence
+        # is_confident, confidence_reason = self._check_confidence(results)
 
-        # If not confident, invoke AI reranker
-        if not is_confident and self.ai_reranker_function:
-            logger.info(f"Low confidence: {confidence_reason} - invoking AI reranker")
-            results = self._invoke_ai_reranker(original_query, results)
-            reranked = True
-        else:
-            logger.info(
-                f"High confidence: {confidence_reason} - returning OpenSearch results"
-            )
-            reranked = False
+        # # If not confident, invoke AI reranker
+        # if not is_confident and self.ai_reranker_function:
+        #     logger.info(f"Low confidence: {confidence_reason} - invoking AI reranker")
+        #     results = self._invoke_ai_reranker(original_query, results)
+        #     reranked = True
+        # else:
+        #     logger.info(
+        #         f"High confidence: {confidence_reason} - returning OpenSearch results"
+        #     )
+        #     reranked = False
 
         # Build response
         processed_response = {
@@ -250,13 +299,13 @@ class JapaneseSKUSearcher:
             "results": results,
             "took": response.get("took", 0),
             "timed_out": response.get("timed_out", False),
-            "confidence": {
-                "is_high": is_confident,
-                "threshold": self.confidence_threshold,
-                "score_gap_ratio": self.score_gap_ratio,
-                "reason": confidence_reason,
-                "reranked": reranked,
-            },
+            # "confidence": {
+            #     "is_high": is_confident,
+            #     "threshold": self.confidence_threshold,
+            #     "score_gap_ratio": self.score_gap_ratio,
+            #     "reason": confidence_reason,
+            #     "reranked": reranked,
+            # },
         }
 
         logger.info(f"Search completed: {total_hits} hits for query '{original_query}'")
