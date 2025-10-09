@@ -16,7 +16,9 @@ class JapaneseSKUSearcher:
 
     def __init__(self):
         self.opensearch_endpoint = os.environ.get("OPENSEARCH_ENDPOINT")
-        self.index_name = os.environ.get("INDEX_NAME", "sku-master")
+        self.index_name = os.environ.get(
+            "INDEX_NAME", "tm-juchum"
+        )  # Changed to tm-juchum
         self.region = os.environ.get("AWS_REGION", "ap-northeast-3")
         self.confidence_threshold = float(
             os.environ.get("CONFIDENCE_THRESHOLD", "25.0")
@@ -107,77 +109,57 @@ class JapaneseSKUSearcher:
 
     def _build_search_query(self, query: str, size: int) -> Dict[str, Any]:
         """
-        Build optimized OpenSearch query for Japanese SKU matching
-        Optimized for bi-directional Japanese ↔ Latin matching
+        Build optimized OpenSearch query for Japanese SKU matching (tm-juchum index)
+        Uses function_score with tiered boost strategy for better relevance
+        Matches sku_indexer.py simple_search strategy
         """
 
-        # ===== STRATEGY 1: Japanese Field Matching =====
-        # Search in main Japanese fields with various analyzers
-        japanese_queries = [
-            # Main field - highest boost for exact matches
-            {"match": {"sku_name": {"query": query, "boost": 5.0}}},
-            # Exact match - for precise queries
-            {"match": {"sku_name.exact": {"query": query, "boost": 4.0}}},
-            # N-gram - for prefix/autocomplete matching
-            {"match": {"sku_name.ngram": {"query": query, "boost": 3.0}}},
-            # Fuzzy - for character-level typo tolerance
-            {"match": {"sku_name.fuzzy": {"query": query, "boost": 2.5}}},
-            # Partial - for incomplete word matching
-            {"match": {"sku_name.partial": {"query": query, "boost": 3.0}}},
-            # Synonym - for domain-specific term expansion
-            {"match": {"sku_name.synonym": {"query": query, "boost": 2.5}}},
+        # 🎯 Optimized boost strategy - prioritize Japanese-only queries
+        should_queries = [
+            # Japanese-only queries (highest priority)
+            {"match": {"search_text": {"query": query, "boost": 8.0}}},
+            {"match": {"search_text.exact": {"query": query, "boost": 7.0}}},
+            {"match": {"search_text.ngram": {"query": query, "boost": 5.0}}},
+            {"match": {"search_text.partial": {"query": query, "boost": 4.0}}},
+            # Cross-language matching (lower priority)
+            {"match": {"search_text.latin_ngram": {"query": query, "boost": 3.0}}},
+            {"match": {"search_text.romaji_ngram": {"query": query, "boost": 2.5}}},
+            {"match": {"search_text.romaji": {"query": query, "boost": 2.5}}},
+            {"match": {"search_text.latin": {"query": query, "boost": 2.5}}},
+            # Fallback strategies (lowest priority)
+            {"match": {"search_text.fuzzy": {"query": query, "boost": 2.0}}},
+            {"match": {"search_text.synonym": {"query": query, "boost": 1.5}}},
         ]
-
-        # ===== STRATEGY 2: Romaji/Latin Field Matching =====
-        # These fields use analyzers that convert Japanese → Romaji at INDEX time
-        # Query will be converted by field's search_analyzer automatically
-        # NO need to set "analyzer" here - let OpenSearch use field's analyzer!
-        romaji_queries = [
-            # Romaji field - Japanese text indexed as romaji
-            {"match": {"sku_name.romaji": {"query": query, "boost": 3.0}}},
-            # Latin field - pure romaji conversion
-            {"match": {"sku_name.latin": {"query": query, "boost": 3.0}}},
-            # Latin N-gram - KEY for substring matching (もぐっち → MOGU)
-            # This is the most important field for Japanese → Latin brand matching
-            {"match": {"sku_name.latin_ngram": {"query": query, "boost": 5.0}}},
-            # Romaji Edge N-gram - CRITICAL for prefix matching (もぐっち → MOGU)
-            # Allows partial Japanese input to match Latin brand names
-            # Example: "もぐっち"→"mogu" matches "MOGU" brand via edge n-grams
-            {"match": {"sku_name.romaji_ngram": {"query": query, "boost": 4.0}}},
-        ]
-
-        # ===== STRATEGY 3: Fuzzy Fallback (Low Priority) =====
-        # Only used as last resort for edge cases
-        # Keep boost low (1.0-1.5) to avoid performance issues
-        fallback_queries = [
-            # Fuzzy matching for typos
-            {
-                "fuzzy": {
-                    "sku_name": {"value": query, "fuzziness": "AUTO", "boost": 1.2}
-                }
-            },
-        ]
-
-        # Combine all strategies
-        should_queries = []
-        should_queries.extend(japanese_queries)
-        should_queries.extend(romaji_queries)
-        should_queries.extend(fallback_queries)
 
         search_body = {
             "query": {
-                "bool": {
-                    "should": should_queries,
-                    "minimum_should_match": 1,
+                "function_score": {
+                    "query": {
+                        "bool": {
+                            "should": should_queries,
+                            "minimum_should_match": "30%",
+                        }
+                    },
+                    "functions": [
+                        # Exact hinban match gets highest boost
+                        {
+                            "filter": {"term": {"hinban": query}},
+                            "weight": 10.0,
+                        },
+                    ],
+                    "score_mode": "sum",
+                    "boost_mode": "multiply",
                 }
             },
+            "_source": [
+                "hinban",
+                "skname1",
+                "colorcd",
+                "colornm",
+                "sizecd",
+                "sizename",
+            ],
             "size": size,
-            "sort": [{"_score": {"order": "desc"}}],
-            "highlight": {
-                "fields": {
-                    "sku_name": {"pre_tags": ["<mark>"], "post_tags": ["</mark>"]},
-                }
-            },
         }
 
         logger.debug(f"Search query: {json.dumps(search_body, ensure_ascii=False)}")
@@ -255,7 +237,7 @@ class JapaneseSKUSearcher:
     def _process_search_results(
         self, response: Dict, original_query: str
     ) -> Dict[str, Any]:
-        """Process OpenSearch response and format results"""
+        """Process OpenSearch response and format results for tm-juchum index"""
 
         hits = response.get("hits", {})
         total_hits = hits.get("total", {}).get("value", 0)
@@ -267,10 +249,15 @@ class JapaneseSKUSearcher:
             score = hit.get("_score", 0)
             highlight = hit.get("highlight", {})
 
-            # Build result item (simplified)
+            # Build result item with tm-juchum fields
             result_item = {
-                "id": source.get("id", ""),
-                "sku_name": source.get("sku_name", ""),
+                "id": source.get("hinban", ""),  # Use hinban as ID
+                "sku_name": source.get("skname1", ""),  # Main SKU name
+                "hinban": source.get("hinban", ""),
+                "colorcd": source.get("colorcd", ""),
+                "colornm": source.get("colornm", ""),
+                "sizecd": source.get("sizecd", ""),
+                "sizename": source.get("sizename", ""),
                 "score": score,
                 "highlights": highlight,
             }

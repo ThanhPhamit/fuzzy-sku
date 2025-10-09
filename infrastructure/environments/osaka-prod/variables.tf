@@ -34,7 +34,7 @@ variable "opensearch_endpoint" {
 variable "opensearch_index_name" {
   description = "OpenSearch index name"
   type        = string
-  default     = "sku-master"
+  default     = "tm-juchum" # Updated to match actual index
 }
 
 # API Gateway configuration

@@ -49,6 +49,7 @@ module "lambda" {
         "bedrock:InvokeModelWithResponseStream"
       ]
       resources = [
+        "arn:aws:bedrock:*::inference-profile/global.anthropic.claude-*",
         "arn:aws:bedrock:*:${data.aws_caller_identity.current.account_id}:inference-profile/*"
       ]
     }

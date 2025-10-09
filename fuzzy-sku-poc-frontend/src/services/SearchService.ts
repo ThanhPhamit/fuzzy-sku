@@ -4,10 +4,11 @@ import config from '../config';
 export interface SearchResult {
   id: string;
   sku_name: string;
-  score: number;
-  highlights: {
-    sku_name?: string[];
-  };
+  hinban: string;
+  colorcd: string;
+  colornm: string;
+  sizecd: string;
+  sizename: string;
 }
 
 export interface SearchResponse {

@@ -16,7 +16,6 @@ const SearchComponent: React.FC<SearchComponentProps> = ({ searchService }) => {
   const [error, setError] = useState<string | null>(null);
   const [searchPerformed, setSearchPerformed] = useState(false);
   const [totalResults, setTotalResults] = useState(0);
-  const [maxScore, setMaxScore] = useState(0);
   const searchSize = 20; // Fixed to 20 results
 
   const handleSearch = useCallback(
@@ -39,12 +38,10 @@ const SearchComponent: React.FC<SearchComponentProps> = ({ searchService }) => {
         if (response && response.results) {
           setResults(response.results);
           setTotalResults(response.total_hits);
-          setMaxScore(response.max_score);
           setSearchPerformed(true);
         } else {
           setResults([]);
           setTotalResults(0);
-          setMaxScore(0);
           setError('No results found');
         }
       } catch (error) {
@@ -56,7 +53,6 @@ const SearchComponent: React.FC<SearchComponentProps> = ({ searchService }) => {
         }
         setResults([]);
         setTotalResults(0);
-        setMaxScore(0);
       } finally {
         setLoading(false);
       }
@@ -70,26 +66,6 @@ const SearchComponent: React.FC<SearchComponentProps> = ({ searchService }) => {
     setError(null);
     setSearchPerformed(false);
     setTotalResults(0);
-    setMaxScore(0);
-  };
-
-  const renderHighlightedText = (
-    text: string,
-    highlights?: string[],
-  ): JSX.Element => {
-    // If we have highlight data from API, use it
-    if (highlights && highlights.length > 0) {
-      const highlightedHtml = highlights[0]; // Use first highlight
-      return (
-        <span
-          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-          className="highlighted-text"
-        />
-      );
-    }
-
-    // Fallback: no highlights, just return plain text
-    return <span>{text}</span>;
   };
 
   return (
@@ -104,7 +80,7 @@ const SearchComponent: React.FC<SearchComponentProps> = ({ searchService }) => {
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Enter SKU name in Japanese (e.g. メイジバランスソフト)"
+                placeholder="Enter aitehinmei"
                 disabled={loading}
                 className="w-full px-6 py-4 text-lg border-2 border-gray-300 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/20 transition-all duration-200 outline-none placeholder-gray-400"
               />
@@ -171,89 +147,68 @@ const SearchComponent: React.FC<SearchComponentProps> = ({ searchService }) => {
           </div>
         )}
 
-        {/* Search Summary */}
-        {searchPerformed && !loading && (
-          <div className="bg-gradient-to-r from-primary to-primary-400 text-white p-4 rounded-xl mb-8 shadow-lg">
-            <p className="text-center font-semibold text-lg">
-              Found <span className="font-bold text-2xl">{totalResults}</span>{' '}
-              result
-              {totalResults !== 1 ? 's' : ''}
-              {query && (
-                <span>
-                  {' '}
-                  for "<span className="font-bold">{query}</span>"
-                </span>
-              )}
-            </p>
-          </div>
-        )}
-
-        {/* Results Grid */}
+        {/* Results Table */}
         {results.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {results.map((result, index) => (
-              <div
-                key={`${result.id || index}`}
-                className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-100 hover:scale-105 hover:border-primary/30"
-              >
-                {/* Card Header */}
-                <div className="bg-gradient-to-r from-primary to-primary-400 p-4 flex justify-between items-center">
-                  <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-full">
-                    <span className="text-white font-bold text-sm">
-                      Score: {result.score.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="text-white/80 text-xs font-mono">
-                    #{index + 1}
-                  </div>
-                </div>
-
-                {/* Card Body */}
-                <div className="p-6 space-y-4">
-                  <div className="space-y-2">
-                    <div className="text-primary text-xs font-bold uppercase tracking-wider">
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gradient-to-r from-primary to-primary-400">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-white uppercase tracking-wider">
+                      #
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-white uppercase tracking-wider">
+                      Hinban
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-white uppercase tracking-wider">
                       SKU Name
-                    </div>
-                    <div className="text-gray-900 font-semibold text-lg leading-relaxed">
-                      {renderHighlightedText(
-                        result.sku_name,
-                        result.highlights?.sku_name,
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Score Badge */}
-                  <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                    <div className="text-gray-500 text-xs">Relevance Score</div>
-                    <div className="flex items-center">
-                      <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-primary to-primary-400 transition-all duration-300"
-                          style={{
-                            width: `${Math.min(
-                              maxScore > 0
-                                ? (result.score / maxScore) * 100
-                                : 0,
-                              100,
-                            )}%`,
-                          }}
-                        ></div>
-                      </div>
-                      <span className="ml-2 text-primary font-bold text-sm">
-                        {result.score.toFixed(1)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Optional: Image Placeholder */}
-                {/* <div className="px-6 pb-6">
-                  <div className="bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl h-32 flex items-center justify-center">
-                    <span className="text-gray-400 text-4xl">📦</span>
-                  </div>
-                </div> */}
-              </div>
-            ))}
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-white uppercase tracking-wider">
+                      Color Code
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-white uppercase tracking-wider">
+                      Color Name
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-white uppercase tracking-wider">
+                      Size Code
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-white uppercase tracking-wider">
+                      Size Name
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {results.map((result, index) => (
+                    <tr
+                      key={`${result.id || index}`}
+                      className="hover:bg-gray-50 transition-colors duration-150"
+                    >
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 font-medium">
+                        {index + 1}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm font-mono font-semibold text-gray-900">
+                        {result.hinban}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900">
+                        {result.sku_name}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                        {result.colorcd}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900">
+                        {result.colornm}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                        {result.sizecd}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {result.sizename}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
