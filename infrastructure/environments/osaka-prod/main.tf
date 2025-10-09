@@ -1,3 +1,34 @@
+module "acm" {
+  source = "../../modules/acm"
+
+  domain       = var.app_cert_dns_domain # cert for zone root domain
+  app_dns_zone = var.app_dns_zone
+
+  providers = {
+    aws          = aws
+    aws.virginia = aws.virginia
+  }
+
+  tags = local.common_tags
+}
+
+
+module "s3_frontend" {
+  source = "../../modules/s3_frontend"
+
+  app_name                   = local.name_prefix
+  acm_certificate_arn        = module.acm.virginia_certificate_arn
+  route_53_zone_id           = data.aws_route53_zone.this.id
+  domain                     = var.frontend_domain
+  create_cloudfront_function = false
+  basic_auth_password        = var.basic_auth_password
+  price_class                = var.price_class
+
+  tags = local.common_tags
+
+  depends_on = [module.acm]
+}
+
 # Cognito Authentication Module
 module "cognito_auth" {
   source = "../../modules/cognito_auth"

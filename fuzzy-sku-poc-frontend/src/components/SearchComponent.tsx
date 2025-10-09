@@ -27,6 +27,9 @@ const SearchComponent: React.FC<SearchComponentProps> = ({ searchService }) => {
         return;
       }
 
+      // Clear previous results immediately when starting new search
+      setResults([]);
+      setTotalResults(0);
       setLoading(true);
       setError(null);
       setSearchPerformed(false);

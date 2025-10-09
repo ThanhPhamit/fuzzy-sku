@@ -53,7 +53,8 @@ variable "enable_cors" {
 variable "cors_allowed_origins" {
   description = "Allowed origins for CORS"
   type        = list(string)
-  default     = ["http://localhost:5173"]
+  default     = ["https://fuzzy-sku-poc.welfan-welink.biz"]
+  # default = ["http://localhost:5173"]
 }
 
 # Lambda configuration
@@ -131,6 +132,38 @@ variable "api_throttle_rate_limit" {
   description = "API Gateway throttle rate limit"
   type        = number
   default     = 2000
+}
+
+# Route53 and Domain configuration
+variable "app_dns_zone" {
+  description = "Route53 hosted zone name"
+  type        = string
+  default     = "welfan-welink.biz"
+}
+
+variable "app_cert_dns_domain" {
+  description = "Domain for ACM certificate (root domain)"
+  type        = string
+  default     = "welfan-welink.biz"
+}
+
+variable "frontend_domain" {
+  description = "CloudFront distribution domain name"
+  type        = string
+  default     = "fuzzy-sku-poc.welfan-welink.biz"
+}
+
+variable "basic_auth_password" {
+  description = "Basic auth password for CloudFront (optional)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "price_class" {
+  description = "CloudFront price class"
+  type        = string
+  default     = "PriceClass_200"
 }
 
 # Tags

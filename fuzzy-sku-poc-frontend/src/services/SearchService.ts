@@ -50,7 +50,7 @@ export class SearchService {
         query,
       )}&size=${size}`;
 
-      console.log('Search URL:', searchUrl); // Debug log
+      // console.log('Search URL:', searchUrl); // Debug log
 
       // Make the API request
       const response = await fetch(searchUrl, {
@@ -73,7 +73,7 @@ export class SearchService {
       }
 
       const data: SearchResponse = await response.json();
-      console.log('Search response:', data); // Debug log
+      // console.log('Search response:', data); // Debug log
       return data;
     } catch (error) {
       console.error('Search error:', error);
