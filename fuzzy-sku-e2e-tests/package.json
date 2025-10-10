@@ -1,0 +1,31 @@
+{
+  "name": "fuzzy-sku-e2e-tests",
+  "version": "1.0.0",
+  "description": "E2E tests for Fuzzy SKU POC using Playwright",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test fuzzy-sku-search.spec.ts",
+    "test:headed": "playwright test fuzzy-sku-search.spec.ts --headed",
+    "test:debug": "playwright test fuzzy-sku-search.spec.ts --debug",
+    "test:ui": "playwright test --ui",
+    "test:report": "playwright show-report",
+    "test:single": "playwright test fuzzy-sku-search.spec.ts --grep",
+    "codegen": "playwright codegen https://fuzzy-sku-poc.welfan-welink.biz"
+  },
+  "keywords": [
+    "playwright",
+    "e2e",
+    "testing",
+    "fuzzy-search"
+  ],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.11.0",
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^24.7.0",
+    "csv-parse": "^6.1.0",
+    "csv-stringify": "^6.6.0",
+    "dotenv": "^17.2.3"
+  }
+}
