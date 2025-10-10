@@ -16,7 +16,7 @@ const SearchComponent: React.FC<SearchComponentProps> = ({ searchService }) => {
   const [error, setError] = useState<string | null>(null);
   const [searchPerformed, setSearchPerformed] = useState(false);
   const [totalResults, setTotalResults] = useState(0);
-  const searchSize = 20; // Fixed to 20 results
+  const searchSize = 50; // Fixed to 100 results
 
   const handleSearch = useCallback(
     async (e: React.FormEvent) => {
