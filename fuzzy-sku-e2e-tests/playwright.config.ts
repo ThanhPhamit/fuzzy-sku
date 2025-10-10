@@ -13,14 +13,26 @@ dotenv.config({ path: path.resolve(__dirname, '.env') });
  */
 export default defineConfig({
   testDir: './tests',
-  /* Run tests in files in parallel - set to false for search tests to avoid rate limiting */
-  fullyParallel: false,
+  /*
+   * Run tests in parallel within files
+   * Set to true to enable parallel execution
+   * WARNING: May cause rate limiting issues with API
+   */
+  fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: 1, // Run tests sequentially
+  /*
+   * Configure number of parallel workers
+   *
+   * Options:
+   * - 1: Sequential (safest, no rate limiting)
+   * - 2-4: Moderate parallelism (recommended)
+   * - 6-8: Fast (may hit rate limits)
+   * - undefined: Use all CPU cores (fastest, high risk)
+   */
+  workers: undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: [
     ['html'],

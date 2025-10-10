@@ -4,6 +4,7 @@ import { stringify } from 'csv-stringify/sync';
 import * as fs from 'fs';
 import * as path from 'path';
 import { login } from './helpers/auth.helper';
+import { TestConfig } from './config/test-config';
 
 /**
  * Test Case Interface based on CSV structure
@@ -122,7 +123,7 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
       console.log(`   🔎 Clicked search button`);
 
       // Wait for results to load (wait for either table or "no results" message)
-      await page.waitForTimeout(2500);
+      await page.waitForTimeout(TestConfig.SEARCH_WAIT_TIME);
 
       // Check if we have results or no results message
       const noResultsMessage = page.locator('text=No results found');
@@ -253,104 +254,124 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
         );
       }
 
-      // Calculate success rate
+      // Calculate success rate for this individual test case
       const foundCount = foundFields.filter((f) => f.found).length;
       const totalCount = foundFields.length;
-      const successRate =
-        totalCount > 0 ? ((foundCount / totalCount) * 100).toFixed(1) : 0;
+      const successRate = totalCount > 0 ? (foundCount / totalCount) * 100 : 0;
 
       console.log(
-        `\n   📊 Results: ${foundCount}/${totalCount} fields found (${successRate}%)`,
+        `\n   📊 Results: ${foundCount}/${totalCount} fields found (${successRate.toFixed(
+          1,
+        )}%)`,
       );
 
       // Update test results
       testResults[index].found_count = foundCount;
       testResults[index].total_count = totalCount;
 
-      // Assertion: ALL expected fields must be found (100% match required)
+      // ⚠️ IMPORTANT: Each test case must find ALL expected fields
+      // SUCCESS_THRESHOLD in config is for overall suite success rate, not individual tests
+      const allFieldsFound = foundCount === totalCount;
       const missingFields = foundFields.filter((f) => !f.found);
 
       try {
         expect(
-          foundCount,
-          `Expected to find ALL ${totalCount} fields in search results, but found only ${foundCount}.\n` +
-            `✅ Found: ${foundFields
+          allFieldsFound,
+          `Expected to find ALL ${totalCount} fields in search results.\n` +
+            `   Found: ${foundCount}/${totalCount} fields (${successRate.toFixed(
+              1,
+            )}%)\n\n` +
+            `✅ Found (${foundCount}): ${foundFields
               .filter((f) => f.found)
-              .map((f) => `${f.field} (${f.value})`)
+              .map((f) => `${f.field}`)
               .join(', ')}\n` +
-            `❌ Missing: ${missingFields
-              .map((f) => `${f.field} (${f.value})`)
+            `❌ Missing (${missingFields.length}): ${missingFields
+              .map((f) => `${f.field}`)
               .join(', ')}`,
-        ).toBe(totalCount);
+        ).toBeTruthy();
 
-        // ✅ TEST PASSED - Highlight and take screenshot
+        // ✅ TEST PASSED - All expected fields found
         testResults[index].status = 'PASS';
         testResults[index].error_message = '';
-        console.log(`   ✅ Test passed! All fields found.\n`);
+        console.log(
+          `   ✅ Test passed! All ${totalCount} fields found (100%)\n`,
+        );
 
         // Find and highlight the matching row in the table
-        try {
-          // Find the row containing the hinban
-          const matchingRow = page
-            .locator('table tbody tr', {
-              has: page.locator(`text="${testCase.hinban}"`),
-            })
-            .first();
+        if (TestConfig.SCREENSHOT.enabled) {
+          try {
+            // Find the row containing the hinban
+            const matchingRow = page
+              .locator('table tbody tr', {
+                has: page.locator(`text="${testCase.hinban}"`),
+              })
+              .first();
 
-          if (await matchingRow.isVisible().catch(() => false)) {
-            // Highlight the row with green background
-            await matchingRow.evaluate((el) => {
-              el.style.backgroundColor = '#86efac'; // Green-300
-              el.style.border = '3px solid #22c55e'; // Green-600
-              el.style.transition = 'all 0.3s ease';
-            });
+            if (await matchingRow.isVisible().catch(() => false)) {
+              // Highlight the row with green background
+              await matchingRow.evaluate((el) => {
+                el.style.backgroundColor = '#86efac'; // Green-300
+                el.style.border = '3px solid #22c55e'; // Green-600
+                el.style.transition = 'all 0.3s ease';
+              });
 
-            console.log(`   🎨 Highlighted matching row`);
+              console.log(`   🎨 Highlighted matching row`);
 
-            // Wait a moment for the highlight to be visible
-            await page.waitForTimeout(500);
+              // Wait for highlight to be visible
+              await page.waitForTimeout(TestConfig.HIGHLIGHT_DURATION);
+            }
+          } catch (highlightError) {
+            console.log(`   ⚠️  Could not highlight row: ${highlightError}`);
           }
-        } catch (highlightError) {
-          console.log(`   ⚠️  Could not highlight row: ${highlightError}`);
+
+          // Take screenshot
+          const screenshotPath = path.join(
+            screenshotsDir,
+            `TC${String(index + 1).padStart(3, '0')}_PASS.png`,
+          );
+
+          await page.screenshot({
+            path: screenshotPath,
+            fullPage: TestConfig.SCREENSHOT.fullPage,
+          });
+
+          testResults[index].screenshot_path = `test-screenshots/TC${String(
+            index + 1,
+          ).padStart(3, '0')}_PASS.png`;
+          console.log(`   📸 Screenshot saved: ${screenshotPath}\n`);
         }
-
-        // Take screenshot
-        const screenshotPath = path.join(
-          screenshotsDir,
-          `TC${String(index + 1).padStart(3, '0')}_PASS.png`,
-        );
-
-        await page.screenshot({
-          path: screenshotPath,
-          fullPage: true,
-        });
-
-        testResults[index].screenshot_path = `test-screenshots/TC${String(
-          index + 1,
-        ).padStart(3, '0')}_PASS.png`;
-        console.log(`   📸 Screenshot saved: ${screenshotPath}\n`);
       } catch (error) {
-        // ❌ TEST FAILED
+        // ❌ TEST FAILED - Not all fields found
         testResults[index].status = 'FAIL';
-        testResults[index].error_message = missingFields
+        testResults[index].error_message = `Missing ${
+          missingFields.length
+        }/${totalCount} fields: ${missingFields
           .map((f) => f.field)
-          .join(', ');
+          .join(', ')}`;
+
+        console.log(
+          `   ❌ Test failed! Found ${foundCount}/${totalCount} fields (${successRate.toFixed(
+            1,
+          )}%)\n`,
+        );
 
         // Take screenshot of failure
-        const screenshotPath = path.join(
-          screenshotsDir,
-          `TC${String(index + 1).padStart(3, '0')}_FAIL.png`,
-        );
+        if (TestConfig.SCREENSHOT.enabled) {
+          const screenshotPath = path.join(
+            screenshotsDir,
+            `TC${String(index + 1).padStart(3, '0')}_FAIL.png`,
+          );
 
-        await page.screenshot({
-          path: screenshotPath,
-          fullPage: true,
-        });
+          await page.screenshot({
+            path: screenshotPath,
+            fullPage: TestConfig.SCREENSHOT.fullPage,
+          });
 
-        testResults[index].screenshot_path = `test-screenshots/TC${String(
-          index + 1,
-        ).padStart(3, '0')}_FAIL.png`;
-        console.log(`   📸 Failure screenshot saved: ${screenshotPath}\n`);
+          testResults[index].screenshot_path = `test-screenshots/TC${String(
+            index + 1,
+          ).padStart(3, '0')}_FAIL.png`;
+          console.log(`   📸 Failure screenshot saved: ${screenshotPath}\n`);
+        }
 
         throw error;
       }
@@ -428,6 +449,36 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
     console.log(`   ❌ FAIL:    ${failCount.toString().padStart(4)}`);
     console.log(`   ⏭️  NOT RUN: ${notRunCount.toString().padStart(4)}`);
     console.log(`   📊 TOTAL:   ${testCases.length.toString().padStart(4)}`);
+    console.log('─'.repeat(80));
+
+    // Check overall success threshold
+    const passRateNum =
+      typeof passRate === 'string' ? parseFloat(passRate) : passRate;
+    const overallSuccess = passRateNum >= TestConfig.SUCCESS_THRESHOLD;
+    const requiredPasses = Math.ceil(
+      (TestConfig.SUCCESS_THRESHOLD / 100) * testCases.length,
+    );
+
+    console.log('\n📊 OVERALL TEST SUITE STATUS:');
+    console.log('─'.repeat(80));
+    console.log(
+      `   Success Threshold: ${TestConfig.SUCCESS_THRESHOLD}% (${requiredPasses}/${testCases.length} tests must pass)`,
+    );
+    console.log(
+      `   Actual Pass Rate:  ${passRate}% (${passCount}/${testCases.length} tests passed)`,
+    );
+    console.log(
+      `   Result: ${overallSuccess ? '✅ SUITE PASSED' : '❌ SUITE FAILED'}`,
+    );
     console.log('─'.repeat(80) + '\n');
+
+    if (!overallSuccess) {
+      console.log(
+        `⚠️  Warning: Test suite did not meet ${TestConfig.SUCCESS_THRESHOLD}% success threshold.`,
+      );
+      console.log(
+        `   Need ${requiredPasses - passCount} more test(s) to pass.\n`,
+      );
+    }
   });
 });
