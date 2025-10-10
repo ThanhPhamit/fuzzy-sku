@@ -38,19 +38,37 @@ export default defineConfig({
     ['html'],
     ['list'],
     ['json', { outputFile: 'test-results/results.json' }],
+    ['./tests/reporters/custom-reporter.ts'], // Custom reporter for CSV and HTML generation
   ],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('')`. */
     baseURL: process.env.BASE_URL || 'https://fuzzy-sku-poc.welfan-welink.biz',
 
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: 'on-first-retry',
+    /*
+     * Trace Viewer - Tự động record TẤT CẢ actions, screenshots, network requests
+     * Options:
+     * - 'on': Record trace cho TẤT CẢ tests (tốn disk space nhưng debug dễ nhất)
+     * - 'on-first-retry': Chỉ record khi test retry (mặc định)
+     * - 'retain-on-failure': Chỉ giữ trace của tests bị FAIL
+     * - 'off': Tắt trace (nhanh nhất)
+     *
+     * Xem trace: npx playwright show-trace trace.zip
+     */
+    trace: 'retain-on-failure', // ✅ Giữ trace cho tests FAIL (có thể đổi sang 'on' để debug)
 
-    /* Screenshot on failure */
-    screenshot: 'only-on-failure',
+    /*
+     * Screenshot settings - Playwright tự động chụp
+     * Options:
+     * - 'on': Chụp screenshot cho TẤT CẢ tests (PASS & FAIL)
+     * - 'only-on-failure': Chỉ chụp khi test FAIL
+     * - 'off': Tắt screenshot tự động
+     *
+     * ❌ TẮT vì đã có custom step screenshots (tránh trùng lặp)
+     */
+    screenshot: 'off', // ❌ Tắt Playwright auto screenshot (dùng custom screenshots thay thế)
 
-    /* Video on failure */
+    /* Video on failure - Record video khi test bị FAIL */
     video: 'retain-on-failure',
 
     /* Timeouts */

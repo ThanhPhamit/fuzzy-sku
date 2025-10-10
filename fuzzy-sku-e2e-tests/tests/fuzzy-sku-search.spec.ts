@@ -5,6 +5,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { login } from './helpers/auth.helper';
 import { TestConfig } from './config/test-config';
+import { HTMLReportGenerator } from './utils/html-report-generator';
+import {
+  createScreenshotter,
+  ScreenshotHelper,
+} from './helpers/screenshot.helper';
 
 /**
  * Test Case Interface based on CSV structure
@@ -36,7 +41,6 @@ interface TestResult extends TestCase {
 // Path to CSV file (now in the same directory as e2e-tests folder)
 const csvPath = path.join(__dirname, '../fuzzy-sku-jpoc-testcases.csv');
 const resultsPath = path.join(__dirname, '../fuzzy-sku-test-results.csv');
-const screenshotsDir = path.join(__dirname, '../test-screenshots');
 
 console.log(`📁 Loading test cases from: ${csvPath}`);
 
@@ -59,12 +63,50 @@ const testResults: TestResult[] = testCases.map((tc) => ({
   status: 'NOT_RUN',
 }));
 
-// Create screenshots directory if it doesn't exist
-if (!fs.existsSync(screenshotsDir)) {
-  fs.mkdirSync(screenshotsDir, { recursive: true });
+// Path to shared results file (for parallel workers)
+const sharedResultsPath = path.join(__dirname, '../.test-results-shared.json');
+
+// Initialize shared results file
+if (!fs.existsSync(sharedResultsPath)) {
+  fs.writeFileSync(sharedResultsPath, JSON.stringify([]), 'utf-8');
 }
 
 console.log(`✅ Successfully loaded ${testCases.length} test cases from CSV\n`);
+
+/**
+ * Save individual test result to shared file (thread-safe with file locking)
+ */
+function saveTestResult(index: number, result: TestResult) {
+  try {
+    // Read current results
+    let allResults: TestResult[] = [];
+    if (fs.existsSync(sharedResultsPath)) {
+      const content = fs.readFileSync(sharedResultsPath, 'utf-8');
+      if (content.trim()) {
+        allResults = JSON.parse(content);
+      }
+    }
+
+    // Update or add result
+    const existingIndex = allResults.findIndex(
+      (r: any) => r._testIndex === index,
+    );
+    const resultWithIndex = { ...result, _testIndex: index };
+
+    if (existingIndex >= 0) {
+      allResults[existingIndex] = resultWithIndex;
+    } else {
+      allResults.push(resultWithIndex);
+    }
+
+    // Write back (atomic write)
+    const tempPath = sharedResultsPath + '.tmp';
+    fs.writeFileSync(tempPath, JSON.stringify(allResults, null, 2), 'utf-8');
+    fs.renameSync(tempPath, sharedResultsPath);
+  } catch (error) {
+    console.error(`⚠️  Failed to save test result ${index}:`, error);
+  }
+}
 
 /**
  * Main test suite for Fuzzy SKU Search
@@ -103,6 +145,19 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
       console.log(`      - Color: ${testCase.colornm} (${testCase.colorcd})`);
       console.log(`      - Size: ${testCase.sizename} (${testCase.sizecd})`);
 
+      // 🎬 Initialize Screenshot Helper cho test case này
+      const testId = `TC${String(index + 1).padStart(3, '0')}`;
+      const screenshotter = createScreenshotter(
+        page,
+        testId,
+        TestConfig.STEP_SCREENSHOTS.outputDir,
+        TestConfig.STEP_SCREENSHOTS.enabled,
+        TestConfig.STEP_SCREENSHOTS.attachToReport, // ✅ Attach vào HTML report
+      );
+
+      // 📸 Step 1: Chụp màn hình trang search ban đầu
+      await screenshotter.capture('01-initial-search-page');
+
       // Get the search input (placeholder: "Enter aitehinmei")
       const searchInput = page.locator('input[placeholder="Enter aitehinmei"]');
 
@@ -113,6 +168,13 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
       // Enter search query
       await searchInput.fill(testCase.aitehinmei);
       console.log(`   ⌨️  Entered search query: "${testCase.aitehinmei}"`);
+
+      // 📸 Step 2: Chụp màn hình sau khi nhập search query (highlight input)
+      await screenshotter.captureWithHighlight(
+        '02-filled-search-query',
+        'input[placeholder="Enter aitehinmei"]',
+        '#fef08a', // Yellow highlight cho input
+      );
 
       // Find and click search button (text: "🔍 Search")
       const searchButton = page.locator(
@@ -133,6 +195,8 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
 
       if (hasNoResults) {
         console.log(`   ❌ No results found for this query`);
+        // 📸 Step 3: Chụp màn hình khi không có kết quả
+        await screenshotter.capture('03-no-results-found');
         throw new Error(`No results found for query: "${testCase.aitehinmei}"`);
       }
 
@@ -156,10 +220,13 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
           console.log(`   ℹ️  "No results" message displayed`);
         }
 
+        // 📸 Step 3: Chụp màn hình khi không tìm thấy results table
+        await screenshotter.capture('03-results-table-not-found');
+
         throw new Error('Results table not visible');
       }
 
-      // Get all text content from results
+      // Get all text content from results (không cần screenshot ở đây nữa)
       const resultText = (await resultsTable.textContent()) || '';
 
       // Track which expected values are found
@@ -319,27 +386,21 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
 
               // Wait for highlight to be visible
               await page.waitForTimeout(TestConfig.HIGHLIGHT_DURATION);
+
+              // 📸 Step 3: Chụp màn hình kết quả cuối cùng với highlight
+              await screenshotter.capture('03-final-result-highlighted');
             }
           } catch (highlightError) {
             console.log(`   ⚠️  Could not highlight row: ${highlightError}`);
           }
 
-          // Take screenshot
-          const screenshotPath = path.join(
-            screenshotsDir,
-            `TC${String(index + 1).padStart(3, '0')}_PASS.png`,
-          );
-
-          await page.screenshot({
-            path: screenshotPath,
-            fullPage: TestConfig.SCREENSHOT.fullPage,
-          });
-
-          testResults[index].screenshot_path = `test-screenshots/TC${String(
-            index + 1,
-          ).padStart(3, '0')}_PASS.png`;
-          console.log(`   📸 Screenshot saved: ${screenshotPath}\n`);
+          // ✅ Test PASSED - Lưu thông tin
+          testResults[index].screenshot_path = '';
+          console.log(`   ✅ Test completed successfully!\n`);
         }
+
+        // ⚠️ IMPORTANT: Save to shared file AFTER screenshot is taken
+        saveTestResult(index, testResults[index]);
       } catch (error) {
         // ❌ TEST FAILED - Not all fields found
         testResults[index].status = 'FAIL';
@@ -355,23 +416,17 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
           )}%)\n`,
         );
 
-        // Take screenshot of failure
+        // 📸 Step 3: Chụp màn hình kết quả thất bại
         if (TestConfig.SCREENSHOT.enabled) {
-          const screenshotPath = path.join(
-            screenshotsDir,
-            `TC${String(index + 1).padStart(3, '0')}_FAIL.png`,
-          );
-
-          await page.screenshot({
-            path: screenshotPath,
-            fullPage: TestConfig.SCREENSHOT.fullPage,
-          });
-
-          testResults[index].screenshot_path = `test-screenshots/TC${String(
-            index + 1,
-          ).padStart(3, '0')}_FAIL.png`;
-          console.log(`   📸 Failure screenshot saved: ${screenshotPath}\n`);
+          await screenshotter.capture('03-final-result-failed');
         }
+
+        // ❌ Test FAILED - Lưu thông tin
+        testResults[index].screenshot_path = '';
+        console.log(`   ❌ Test failed!\n`);
+
+        // ⚠️ IMPORTANT: Save to shared file AFTER screenshot is taken
+        saveTestResult(index, testResults[index]);
 
         throw error;
       }
@@ -380,14 +435,36 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
 
   /**
    * After all tests complete, save results to CSV
+   * NOTE: This runs PER WORKER, so we don't write final reports here
+   * Final reports are generated by custom-reporter.ts after ALL workers complete
    */
   test.afterAll(async () => {
     console.log('\n' + '='.repeat(80));
-    console.log('📊 GENERATING TEST RESULTS CSV...');
+    console.log('📊 WORKER COMPLETED - Waiting for other workers...');
     console.log('='.repeat(80) + '\n');
 
+    // Load all results from shared file
+    let allResults: TestResult[] = [];
+    if (fs.existsSync(sharedResultsPath)) {
+      const content = fs.readFileSync(sharedResultsPath, 'utf-8');
+      if (content.trim()) {
+        allResults = JSON.parse(content);
+      }
+    }
+
+    // Sort by test index
+    allResults.sort(
+      (a: any, b: any) => (a._testIndex || 0) - (b._testIndex || 0),
+    );
+
+    // Merge with original test cases to get all fields
+    const mergedResults = testCases.map((tc, idx) => {
+      const saved = allResults.find((r: any) => r._testIndex === idx);
+      return saved || { ...tc, status: 'NOT_RUN' as const };
+    });
+
     // Prepare CSV data
-    const csvData = testResults.map((result, index) => ({
+    const csvData = mergedResults.map((result, index) => ({
       test_number: index + 1,
       status: result.status || 'NOT_RUN',
       aitehinmei: result.aitehinmei,
@@ -424,61 +501,26 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
       bom: true,
     });
 
-    // Write to file
+    // Write to file (this will be overwritten by custom reporter)
     fs.writeFileSync(resultsPath, csvOutput, 'utf-8');
 
     // Count results
-    const passCount = testResults.filter((r) => r.status === 'PASS').length;
-    const failCount = testResults.filter((r) => r.status === 'FAIL').length;
-    const notRunCount = testResults.filter(
+    const passCount = mergedResults.filter((r) => r.status === 'PASS').length;
+    const failCount = mergedResults.filter((r) => r.status === 'FAIL').length;
+    const notRunCount = mergedResults.filter(
       (r) => r.status === 'NOT_RUN',
     ).length;
-    const passRate =
-      testCases.length > 0
-        ? ((passCount / testCases.length) * 100).toFixed(1)
-        : 0;
 
-    console.log(`✅ Test results saved to: ${resultsPath}`);
-    console.log(`📸 Screenshots saved to: ${screenshotsDir}\n`);
-
-    console.log('📈 TEST SUMMARY:');
+    console.log('📈 WORKER TEST SUMMARY:');
     console.log('─'.repeat(80));
-    console.log(
-      `   ✅ PASS:    ${passCount.toString().padStart(4)} (${passRate}%)`,
-    );
+    console.log(`   ✅ PASS:    ${passCount.toString().padStart(4)}`);
     console.log(`   ❌ FAIL:    ${failCount.toString().padStart(4)}`);
     console.log(`   ⏭️  NOT RUN: ${notRunCount.toString().padStart(4)}`);
     console.log(`   📊 TOTAL:   ${testCases.length.toString().padStart(4)}`);
-    console.log('─'.repeat(80));
-
-    // Check overall success threshold
-    const passRateNum =
-      typeof passRate === 'string' ? parseFloat(passRate) : passRate;
-    const overallSuccess = passRateNum >= TestConfig.SUCCESS_THRESHOLD;
-    const requiredPasses = Math.ceil(
-      (TestConfig.SUCCESS_THRESHOLD / 100) * testCases.length,
-    );
-
-    console.log('\n📊 OVERALL TEST SUITE STATUS:');
-    console.log('─'.repeat(80));
-    console.log(
-      `   Success Threshold: ${TestConfig.SUCCESS_THRESHOLD}% (${requiredPasses}/${testCases.length} tests must pass)`,
-    );
-    console.log(
-      `   Actual Pass Rate:  ${passRate}% (${passCount}/${testCases.length} tests passed)`,
-    );
-    console.log(
-      `   Result: ${overallSuccess ? '✅ SUITE PASSED' : '❌ SUITE FAILED'}`,
-    );
     console.log('─'.repeat(80) + '\n');
 
-    if (!overallSuccess) {
-      console.log(
-        `⚠️  Warning: Test suite did not meet ${TestConfig.SUCCESS_THRESHOLD}% success threshold.`,
-      );
-      console.log(
-        `   Need ${requiredPasses - passCount} more test(s) to pass.\n`,
-      );
-    }
+    console.log(
+      '⏳ Waiting for custom reporter to generate final reports...\n',
+    );
   });
 });

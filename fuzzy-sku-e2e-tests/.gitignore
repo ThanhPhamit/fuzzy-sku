@@ -39,3 +39,14 @@ traces/
 
 # test-screenshots/
 test-screenshots/
+test-screenshots-steps/
+
+# Shared test results (temporary file for parallel workers)
+.test-results-shared.json
+.test-results-shared.json.tmp
+
+# Custom HTML report
+custom-report.html
+
+# Deploy folder for S3/CloudFront
+custom-report-dist/

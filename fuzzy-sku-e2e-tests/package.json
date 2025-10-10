@@ -9,6 +9,7 @@
     "test:debug": "playwright test fuzzy-sku-search.spec.ts --debug",
     "test:ui": "playwright test --ui",
     "test:report": "playwright show-report",
+    "test:report:custom": "xdg-open custom-report.html || open custom-report.html",
     "test:single": "playwright test fuzzy-sku-search.spec.ts --grep",
     "codegen": "playwright codegen https://fuzzy-sku-poc.welfan-welink.biz"
   },

@@ -40,4 +40,15 @@ export const TestConfig = {
     enabled: true,
     fullPage: true,
   },
+
+  /**
+   * Step-by-step screenshots (like TestCafe)
+   * Chụp màn hình từng step thao tác
+   */
+  STEP_SCREENSHOTS: {
+    enabled: true, // Bật/tắt step screenshots
+    fullPage: true, // Chụp toàn bộ trang hay chỉ viewport
+    outputDir: './test-screenshots-steps', // Thư mục lưu screenshots
+    attachToReport: true, // ✅ Attach screenshots vào Playwright HTML Report
+  },
 };
