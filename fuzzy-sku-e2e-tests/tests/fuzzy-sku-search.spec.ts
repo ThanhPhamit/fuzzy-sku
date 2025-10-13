@@ -1,11 +1,9 @@
 import { test, expect, Page } from '@playwright/test';
 import { parse } from 'csv-parse/sync';
-import { stringify } from 'csv-stringify/sync';
 import * as fs from 'fs';
 import * as path from 'path';
 import { login } from './helpers/auth.helper';
 import { TestConfig } from './config/test-config';
-import { HTMLReportGenerator } from './utils/html-report-generator';
 import {
   createScreenshotter,
   ScreenshotHelper,
@@ -33,6 +31,8 @@ interface TestResult extends TestCase {
   found_count?: number;
   total_count?: number;
   screenshot_path?: string;
+  result_position?: number; // Vị trí của expected result trong danh sách (1-based)
+  result_rank_range?: string; // Khoảng ranking: 'Top 1-5', 'Top 6-10', etc.
 }
 
 /**
@@ -40,7 +40,6 @@ interface TestResult extends TestCase {
  */
 // Path to CSV file (now in the same directory as e2e-tests folder)
 const csvPath = path.join(__dirname, '../fuzzy-sku-jpoc-testcases.csv');
-const resultsPath = path.join(__dirname, '../fuzzy-sku-test-results.csv');
 
 console.log(`📁 Loading test cases from: ${csvPath}`);
 
@@ -66,45 +65,86 @@ const testResults: TestResult[] = testCases.map((tc) => ({
 // Path to shared results file (for parallel workers)
 const sharedResultsPath = path.join(__dirname, '../.test-results-shared.json');
 
-// Initialize shared results file
+// ✅ MERGE MODE: Preserve existing results when rerunning specific tests
+// This allows you to rerun only failed/specific tests and merge with previous results
 if (!fs.existsSync(sharedResultsPath)) {
+  console.log('📝 Creating new shared results file (first run)...');
   fs.writeFileSync(sharedResultsPath, JSON.stringify([]), 'utf-8');
+} else {
+  console.log(
+    '📝 Found existing results - will merge new results (rerun mode)...',
+  );
 }
 
 console.log(`✅ Successfully loaded ${testCases.length} test cases from CSV\n`);
 
 /**
- * Save individual test result to shared file (thread-safe with file locking)
+ * Save individual test result to shared file with retry logic
  */
 function saveTestResult(index: number, result: TestResult) {
-  try {
-    // Read current results
-    let allResults: TestResult[] = [];
-    if (fs.existsSync(sharedResultsPath)) {
-      const content = fs.readFileSync(sharedResultsPath, 'utf-8');
-      if (content.trim()) {
-        allResults = JSON.parse(content);
+  const maxRetries = 5;
+  const baseDelay = 50; // ms
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Add exponential backoff with jitter
+      if (attempt > 0) {
+        const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 100;
+        const start = Date.now();
+        while (Date.now() - start < delay) {
+          /* busy wait */
+        }
+      }
+
+      // Read current results with validation
+      let allResults: TestResult[] = [];
+      if (fs.existsSync(sharedResultsPath)) {
+        const content = fs.readFileSync(sharedResultsPath, 'utf-8');
+        if (content.trim()) {
+          try {
+            allResults = JSON.parse(content);
+            if (!Array.isArray(allResults)) {
+              console.warn(`   ⚠️  Invalid JSON, resetting...`);
+              allResults = [];
+            }
+          } catch (parseError) {
+            if (attempt < maxRetries - 1) {
+              continue; // Retry on parse error
+            }
+            console.warn(
+              `   ⚠️  Corrupt JSON after ${maxRetries} attempts, resetting...`,
+            );
+            allResults = [];
+          }
+        }
+      }
+
+      // Update or add result
+      const existingIndex = allResults.findIndex(
+        (r: any) => r._testIndex === index,
+      );
+      const resultWithIndex = { ...result, _testIndex: index };
+
+      if (existingIndex >= 0) {
+        allResults[existingIndex] = resultWithIndex;
+      } else {
+        allResults.push(resultWithIndex);
+      }
+
+      // Atomic write with unique temp file
+      const tempPath = `${sharedResultsPath}.tmp.${process.pid}.${Date.now()}`;
+      fs.writeFileSync(tempPath, JSON.stringify(allResults, null, 2), 'utf-8');
+      fs.renameSync(tempPath, sharedResultsPath);
+
+      return; // Success!
+    } catch (error) {
+      if (attempt === maxRetries - 1) {
+        console.error(
+          `⚠️  Failed to save test result ${index} after ${maxRetries} attempts:`,
+          error,
+        );
       }
     }
-
-    // Update or add result
-    const existingIndex = allResults.findIndex(
-      (r: any) => r._testIndex === index,
-    );
-    const resultWithIndex = { ...result, _testIndex: index };
-
-    if (existingIndex >= 0) {
-      allResults[existingIndex] = resultWithIndex;
-    } else {
-      allResults.push(resultWithIndex);
-    }
-
-    // Write back (atomic write)
-    const tempPath = sharedResultsPath + '.tmp';
-    fs.writeFileSync(tempPath, JSON.stringify(allResults, null, 2), 'utf-8');
-    fs.renameSync(tempPath, sharedResultsPath);
-  } catch (error) {
-    console.error(`⚠️  Failed to save test result ${index}:`, error);
   }
 }
 
@@ -147,10 +187,28 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
 
       // 🎬 Initialize Screenshot Helper cho test case này
       const testId = `TC${String(index + 1).padStart(3, '0')}`;
+
+      // 🗑️ Delete old screenshots for this test case before rerun
+      const screenshotDir = TestConfig.STEP_SCREENSHOTS.outputDir;
+      if (fs.existsSync(screenshotDir)) {
+        const oldScreenshots = fs
+          .readdirSync(screenshotDir)
+          .filter((file) => file.startsWith(testId));
+
+        if (oldScreenshots.length > 0) {
+          console.log(
+            `   🗑️  Deleting ${oldScreenshots.length} old screenshot(s)...`,
+          );
+          oldScreenshots.forEach((file) => {
+            fs.unlinkSync(path.join(screenshotDir, file));
+          });
+        }
+      }
+
       const screenshotter = createScreenshotter(
         page,
         testId,
-        TestConfig.STEP_SCREENSHOTS.outputDir,
+        screenshotDir,
         TestConfig.STEP_SCREENSHOTS.enabled,
         TestConfig.STEP_SCREENSHOTS.attachToReport, // ✅ Attach vào HTML report
       );
@@ -228,6 +286,63 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
 
       // Get all text content from results (không cần screenshot ở đây nữa)
       const resultText = (await resultsTable.textContent()) || '';
+
+      // 🎯 Find the position of expected result in the table
+      let resultPosition = -1; // -1 means not found
+      try {
+        // Get all rows in the table
+        const rows = page.locator('table tbody tr');
+        const rowCount = await rows.count();
+
+        console.log(`   📋 Total rows in result: ${rowCount}`);
+
+        // Search for the row containing the expected hinban
+        for (let i = 0; i < rowCount; i++) {
+          const row = rows.nth(i);
+          const rowText = await row.textContent();
+
+          if (rowText && rowText.includes(testCase.hinban)) {
+            resultPosition = i + 1; // 1-based position
+            console.log(
+              `   🎯 Found expected result at position: ${resultPosition}`,
+            );
+            break;
+          }
+        }
+
+        if (resultPosition === -1) {
+          console.log(
+            `   ⚠️  Expected result (${testCase.hinban}) not found in results`,
+          );
+        }
+      } catch (error) {
+        console.log(`   ⚠️  Could not determine result position: ${error}`);
+      }
+
+      // Determine rank range based on position
+      let rankRange = 'Not Found';
+      if (resultPosition > 0) {
+        if (resultPosition <= 5) {
+          rankRange = 'Top 1-5';
+        } else if (resultPosition <= 10) {
+          rankRange = 'Top 6-10';
+        } else if (resultPosition <= 20) {
+          rankRange = 'Top 11-20';
+        } else if (resultPosition <= 30) {
+          rankRange = 'Top 21-30';
+        } else if (resultPosition <= 50) {
+          rankRange = 'Top 31-50';
+        } else {
+          rankRange = `Below Top 50 (Position ${resultPosition})`;
+        }
+      }
+
+      console.log(`   📊 Rank Range: ${rankRange}`);
+
+      // Save position info to test results
+      testResults[index].result_position =
+        resultPosition > 0 ? resultPosition : undefined;
+      testResults[index].result_rank_range = rankRange;
 
       // Track which expected values are found
       const foundFields: { field: string; value: string; found: boolean }[] =
@@ -436,7 +551,6 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
   /**
    * After all tests complete, save results to CSV
    * NOTE: This runs PER WORKER, so we don't write final reports here
-   * Final reports are generated by custom-reporter.ts after ALL workers complete
    */
   test.afterAll(async () => {
     console.log('\n' + '='.repeat(80));
@@ -457,54 +571,17 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
       (a: any, b: any) => (a._testIndex || 0) - (b._testIndex || 0),
     );
 
-    // Merge with original test cases to get all fields
+    // Merge with original test cases to get all fields (for summary only)
     const mergedResults = testCases.map((tc, idx) => {
       const saved = allResults.find((r: any) => r._testIndex === idx);
       return saved || { ...tc, status: 'NOT_RUN' as const };
     });
 
-    // Prepare CSV data
-    const csvData = mergedResults.map((result, index) => ({
-      test_number: index + 1,
-      status: result.status || 'NOT_RUN',
-      aitehinmei: result.aitehinmei,
-      hinban: result.hinban,
-      skname1: result.skname1,
-      colorcd: result.colorcd,
-      colornm: result.colornm,
-      sizecd: result.sizecd,
-      sizename: result.sizename,
-      found_count: result.found_count ?? '',
-      total_count: result.total_count ?? '',
-      error_message: result.error_message || '',
-      screenshot_path: result.screenshot_path || '',
-    }));
+    // ⚠️ DO NOT write CSV here - let custom reporter handle it
+    // Custom reporter has better merge logic with previous results
+    // This avoids race conditions and ensures single source of truth
 
-    // Convert to CSV string
-    const csvOutput = stringify(csvData, {
-      header: true,
-      columns: [
-        'test_number',
-        'status',
-        'aitehinmei',
-        'hinban',
-        'skname1',
-        'colorcd',
-        'colornm',
-        'sizecd',
-        'sizename',
-        'found_count',
-        'total_count',
-        'error_message',
-        'screenshot_path',
-      ],
-      bom: true,
-    });
-
-    // Write to file (this will be overwritten by custom reporter)
-    fs.writeFileSync(resultsPath, csvOutput, 'utf-8');
-
-    // Count results
+    // Count results for worker summary only
     const passCount = mergedResults.filter((r) => r.status === 'PASS').length;
     const failCount = mergedResults.filter((r) => r.status === 'FAIL').length;
     const notRunCount = mergedResults.filter(
@@ -518,9 +595,5 @@ test.describe('Fuzzy SKU Search - CSV Test Cases', () => {
     console.log(`   ⏭️  NOT RUN: ${notRunCount.toString().padStart(4)}`);
     console.log(`   📊 TOTAL:   ${testCases.length.toString().padStart(4)}`);
     console.log('─'.repeat(80) + '\n');
-
-    console.log(
-      '⏳ Waiting for custom reporter to generate final reports...\n',
-    );
   });
 });

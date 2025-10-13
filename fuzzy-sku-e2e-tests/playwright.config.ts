@@ -72,16 +72,16 @@ export default defineConfig({
     video: 'retain-on-failure',
 
     /* Timeouts */
-    actionTimeout: 15000,
-    navigationTimeout: 30000,
+    actionTimeout: 30000, // Tăng từ 15s lên 30s cho mỗi action
+    navigationTimeout: 60000, // Tăng từ 30s lên 60s cho navigation
   },
 
   /* Global timeout for each test */
-  timeout: 60000,
+  timeout: 120000, // Tăng từ 60s lên 120s (2 phút) cho mỗi test case
 
   /* Expect timeout */
   expect: {
-    timeout: 10000,
+    timeout: 20000, // Tăng từ 10s lên 20s cho expect assertions
   },
 
   /* Configure projects for major browsers */

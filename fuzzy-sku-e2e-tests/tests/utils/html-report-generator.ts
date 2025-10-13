@@ -16,6 +16,8 @@ interface TestResult {
   error_message?: string;
   screenshot_path?: string;
   step_screenshots?: string[]; // Array of step screenshot paths
+  result_position?: number; // Vị trí của expected result trong danh sách (1-based)
+  result_rank_range?: string; // Khoảng ranking: 'Top 1-5', 'Top 6-10', etc.
 }
 
 interface ReportSummary {
@@ -287,10 +289,144 @@ export class HTMLReportGenerator {
       }
       
       .test-details {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 20px;
         margin-bottom: 25px;
+      }
+      
+      .query-section {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        border-left: 4px solid #007bff;
+        margin-bottom: 20px;
+      }
+      
+      .query-section h4 {
+        font-size: 0.85rem;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      
+      .query-section p {
+        font-size: 1.1rem;
+        color: #212529;
+        word-break: break-word;
+        font-weight: 500;
+        padding: 10px;
+        background: #f8f9fa;
+        border-radius: 6px;
+      }
+      
+      .expected-values-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+      }
+      
+      .expected-values-table caption {
+        text-align: left;
+        padding: 15px 20px;
+        background: #3C9D04;
+        color: white;
+        font-weight: bold;
+        font-size: 1rem;
+        letter-spacing: 0.5px;
+      }
+      
+      .expected-values-table th,
+      .expected-values-table td {
+        padding: 15px 20px;
+        text-align: center;
+        border-right: 1px solid #dee2e6;
+      }
+      
+      .expected-values-table th:last-child,
+      .expected-values-table td:last-child {
+        border-right: none;
+      }
+      
+      .expected-values-table th {
+        background: #f8f9fa;
+        color: #495057;
+        font-weight: 600;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        width: 16.66%;
+      }
+      
+      .expected-values-table td {
+        color: #212529;
+        font-size: 1rem;
+        word-break: break-word;
+        background: white;
+      }
+      
+      .expected-values-table tbody tr:hover td {
+        background: #f8f9fa;
+      }
+      
+      .match-result-section {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      
+      .match-result-section.success {
+        border: 3px solid #28a745;
+        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+      }
+      
+      .match-result-section.partial {
+        border: 3px solid #ffc107;
+        background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+      }
+      
+      .match-result-section.failed {
+        border: 3px solid #dc3545;
+        background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+      }
+      
+      .match-result-section h4 {
+        font-size: 0.85rem;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 10px;
+      }
+      
+      .match-result-section .result-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin: 10px 0;
+      }
+      
+      .match-result-section.success .result-value {
+        color: #28a745;
+      }
+      
+      .match-result-section.partial .result-value {
+        color: #ffc107;
+      }
+      
+      .match-result-section.failed .result-value {
+        color: #dc3545;
+      }
+      
+      .match-result-section .result-text {
+        font-size: 1.1rem;
+        color: #495057;
+        font-weight: 500;
       }
       
       .detail-group {
@@ -324,32 +460,147 @@ export class HTMLReportGenerator {
       }
       
       .screenshot-section {
-        margin-top: 25px;
+        margin-top: 30px;
+        background: white;
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
       }
       
       .screenshot-section h4 {
-        font-size: 1.1rem;
-        margin-bottom: 15px;
-        color: #495057;
+        font-size: 1.4rem;
+        margin-bottom: 25px;
+        color: #1f2937;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding-bottom: 15px;
+        border-bottom: 3px solid #3C9D04;
+      }
+      
+      .steps-container {
+        display: flex;
+        flex-direction: column;
+        gap: 25px;
+      }
+      
+      .screenshot-row {
+        background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+        padding: 0;
+        border-radius: 12px;
+        border: 2px solid #e5e7eb;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+      }
+      
+      .screenshot-row:hover {
+        border-color: #3C9D04;
+        box-shadow: 0 8px 24px rgba(60, 157, 4, 0.15);
+        transform: translateY(-4px);
+      }
+      
+      .step-label {
+        width: 100%;
+        padding: 18px 25px;
+        background: linear-gradient(135deg, #3C9D04 0%, #2d7603 100%);
+        color: white;
+        font-weight: 700;
+        font-size: 1rem;
+        text-align: left;
+        box-shadow: 0 2px 8px rgba(60, 157, 4, 0.3);
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border-radius: 10px 10px 0 0;
+      }
+      
+      .step-label::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+        transition: left 0.5s;
+      }
+      
+      .screenshot-row:hover .step-label::before {
+        left: 100%;
+      }
+      
+      .step-number {
+        font-size: 1.2rem;
+        font-weight: 800;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      
+      .step-name {
+        font-size: 0.95rem;
+        opacity: 0.95;
+        font-weight: 500;
+        text-transform: capitalize;
+        flex: 1;
       }
       
       .screenshot-container {
-        background: white;
-        padding: 15px;
-        border-radius: 8px;
+        width: 100%;
         text-align: center;
+        position: relative;
+        padding: 20px;
+        background: white;
+        border-radius: 0 0 10px 10px;
+      }
+      
+      .screenshot-wrapper {
+        position: relative;
+        display: inline-block;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        background: white;
+      }
+      
+      .screenshot-wrapper:hover {
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.15);
+        transform: scale(1.02);
+      }
+      
+      .screenshot-wrapper::after {
+        content: '🔍 Click to zoom';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(to top, rgba(60, 157, 4, 0.95), transparent);
+        color: white;
+        padding: 15px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+        letter-spacing: 0.5px;
+      }
+      
+      .screenshot-wrapper:hover::after {
+        opacity: 1;
       }
       
       .screenshot-container img {
         max-width: 100%;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        cursor: pointer;
+        max-height: 450px;
+        display: block;
+        cursor: zoom-in;
         transition: transform 0.3s;
-      }
-      
-      .screenshot-container img:hover {
-        transform: scale(1.02);
       }
       
       .no-screenshot {
@@ -370,7 +621,7 @@ export class HTMLReportGenerator {
         margin: 5px 0;
       }
       
-      /* Modal for full-size screenshot */
+      /* Modal for full-size screenshot with zoom */
       .modal {
         display: none;
         position: fixed;
@@ -379,9 +630,10 @@ export class HTMLReportGenerator {
         top: 0;
         width: 100%;
         height: 100%;
-        background-color: rgba(0, 0, 0, 0.9);
+        background-color: rgba(0, 0, 0, 0.95);
         align-items: center;
         justify-content: center;
+        overflow: auto;
       }
       
       .modal.open {
@@ -389,22 +641,75 @@ export class HTMLReportGenerator {
       }
       
       .modal-content {
-        max-width: 95%;
-        max-height: 95%;
+        max-width: 90%;
+        max-height: 90%;
+        cursor: zoom-in;
+        transition: transform 0.3s;
+        transform-origin: center center;
+      }
+      
+      .modal-content.zoomed {
+        cursor: zoom-out;
+        max-width: none;
+        max-height: none;
+        transform: scale(1.5);
       }
       
       .close-modal {
-        position: absolute;
+        position: fixed;
         top: 20px;
         right: 35px;
         color: #f1f1f1;
         font-size: 40px;
         font-weight: bold;
         cursor: pointer;
+        z-index: 1001;
+        background: rgba(0, 0, 0, 0.5);
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s;
       }
       
       .close-modal:hover {
-        color: #bbb;
+        background: rgba(220, 53, 69, 0.8);
+        transform: rotate(90deg);
+      }
+      
+      .zoom-controls {
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 10px;
+        z-index: 1001;
+      }
+      
+      .zoom-btn {
+        background: rgba(60, 157, 4, 0.9);
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-size: 1.2rem;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.3s;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      }
+      
+      .zoom-btn:hover {
+        background: rgba(60, 157, 4, 1);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+      }
+      
+      .zoom-btn:active {
+        transform: translateY(0);
       }
       
       @media print {
@@ -451,19 +756,64 @@ export class HTMLReportGenerator {
         });
       }
       
-      // Modal for screenshots
+      // Modal for screenshots with zoom
+      let currentZoom = 1;
+      
       function openScreenshot(imgSrc) {
         const modal = document.getElementById('screenshot-modal');
         const modalImg = document.getElementById('modal-img');
         modal.classList.add('open');
         modalImg.src = imgSrc;
+        currentZoom = 1;
+        modalImg.style.transform = 'scale(1)';
+        modalImg.classList.remove('zoomed');
       }
       
       function closeModal() {
-        document.getElementById('screenshot-modal').classList.remove('open');
+        const modal = document.getElementById('screenshot-modal');
+        const modalImg = document.getElementById('modal-img');
+        modal.classList.remove('open');
+        currentZoom = 1;
+        modalImg.style.transform = 'scale(1)';
+        modalImg.classList.remove('zoomed');
       }
       
-      // Close modal on click outside
+      function zoomIn() {
+        const modalImg = document.getElementById('modal-img');
+        currentZoom = Math.min(currentZoom + 0.5, 5);
+        modalImg.style.transform = 'scale(' + currentZoom + ')';
+        if (currentZoom > 1) {
+          modalImg.classList.add('zoomed');
+        }
+      }
+      
+      function zoomOut() {
+        const modalImg = document.getElementById('modal-img');
+        currentZoom = Math.max(currentZoom - 0.5, 1);
+        modalImg.style.transform = 'scale(' + currentZoom + ')';
+        if (currentZoom === 1) {
+          modalImg.classList.remove('zoomed');
+        }
+      }
+      
+      function resetZoom() {
+        const modalImg = document.getElementById('modal-img');
+        currentZoom = 1;
+        modalImg.style.transform = 'scale(1)';
+        modalImg.classList.remove('zoomed');
+      }
+      
+      // Toggle zoom on image click
+      function toggleZoom() {
+        const modalImg = document.getElementById('modal-img');
+        if (currentZoom === 1) {
+          zoomIn();
+        } else {
+          resetZoom();
+        }
+      }
+      
+      // Close modal on background click
       document.addEventListener('click', function(event) {
         const modal = document.getElementById('screenshot-modal');
         if (event.target === modal) {
@@ -473,10 +823,32 @@ export class HTMLReportGenerator {
       
       // Keyboard shortcuts
       document.addEventListener('keydown', function(event) {
+        const modal = document.getElementById('screenshot-modal');
+        if (!modal.classList.contains('open')) return;
+        
         if (event.key === 'Escape') {
           closeModal();
+        } else if (event.key === '+' || event.key === '=') {
+          zoomIn();
+        } else if (event.key === '-') {
+          zoomOut();
+        } else if (event.key === '0') {
+          resetZoom();
         }
       });
+      
+      // Mouse wheel zoom
+      document.addEventListener('wheel', function(event) {
+        const modal = document.getElementById('screenshot-modal');
+        if (!modal.classList.contains('open')) return;
+        
+        event.preventDefault();
+        if (event.deltaY < 0) {
+          zoomIn();
+        } else {
+          zoomOut();
+        }
+      }, { passive: false });
     `;
   }
 
@@ -582,9 +954,14 @@ export class HTMLReportGenerator {
   </div>
   
   <!-- Screenshot Modal -->
-  <div id="screenshot-modal" class="modal" onclick="closeModal()">
-    <span class="close-modal">&times;</span>
-    <img class="modal-content" id="modal-img" alt="Screenshot">
+  <div id="screenshot-modal" class="modal">
+    <span class="close-modal" onclick="closeModal()">&times;</span>
+    <img class="modal-content" id="modal-img" alt="Screenshot" onclick="toggleZoom()">
+    <div class="zoom-controls">
+      <button class="zoom-btn" onclick="zoomOut()" title="Zoom Out (-)">−</button>
+      <button class="zoom-btn" onclick="resetZoom()" title="Reset Zoom (0)">⟲</button>
+      <button class="zoom-btn" onclick="zoomIn()" title="Zoom In (+)">+</button>
+    </div>
   </div>
   
   <script>${this.generateJS()}</script>
@@ -615,16 +992,24 @@ export class HTMLReportGenerator {
         const stepLabel = stepName.charAt(0).toUpperCase() + stepName.slice(1);
 
         return `
-        <div class="screenshot-container">
-          <p style="margin-bottom: 10px; color: #6c757d; font-weight: 600;">
-            📍 Step ${String(idx + 1).padStart(2, '0')}: ${stepLabel}
-          </p>
-          <img 
-            src="${path}" 
-            alt="Test ${test.test_number} - ${stepLabel}"
-            onclick="openScreenshot(this.src)"
-            loading="lazy"
-          />
+        <div class="screenshot-row">
+          <div class="step-label">
+            <span class="step-number">📍 Step ${String(idx + 1).padStart(
+              2,
+              '0',
+            )}</span>
+            <span class="step-name">・${stepLabel}</span>
+          </div>
+          <div class="screenshot-container">
+            <div class="screenshot-wrapper">
+              <img 
+                src="${path}" 
+                alt="Test ${test.test_number} - ${stepLabel}"
+                onclick="openScreenshot(this.src)"
+                loading="lazy"
+              />
+            </div>
+          </div>
         </div>
       `;
       })
@@ -632,8 +1017,8 @@ export class HTMLReportGenerator {
 
     return `
           <div class="screenshot-section">
-            <h4>📸 Step-by-Step Screenshots (${test.step_screenshots.length} steps)</h4>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+            <h4>📸 Step-by-Step</h4>
+            <div class="steps-container">
               ${screenshotsHTML}
             </div>
           </div>
@@ -649,6 +1034,14 @@ export class HTMLReportGenerator {
         ? '❌ FAIL'
         : '⏭️ NOT RUN';
 
+    // Determine match result status
+    const matchResultClass =
+      test.found_count === test.total_count
+        ? 'success'
+        : test.found_count && test.found_count > 0
+        ? 'partial'
+        : 'failed';
+
     return `
       <div class="test-case" data-status="${test.status}">
         <div class="test-case-header ${statusClass}" onclick="toggleTestCase(${
@@ -659,7 +1052,6 @@ export class HTMLReportGenerator {
               3,
               '0',
             )}: ${this.escapeHtml(test.aitehinmei)}</h3>
-            <p>Expected Hinban: ${test.hinban}</p>
           </div>
           <div class="test-case-status">
             <span class="status-badge ${statusClass}">${statusText}</span>
@@ -678,35 +1070,83 @@ export class HTMLReportGenerator {
         
         <div id="test-body-${test.test_number}" class="test-case-body">
           <div class="test-details">
-            <div class="detail-group">
-              <h4>📝 Input Query</h4>
+            <!-- Input Query Section -->
+            <div class="query-section">
+              <h4>📝 Input Query (Aitehinmei)</h4>
               <p>${this.escapeHtml(test.aitehinmei)}</p>
             </div>
             
-            <div class="detail-group">
-              <h4>🎯 Expected Hinban</h4>
-              <p>${test.hinban}</p>
-            </div>
+            <!-- Expected Values Table -->
+            <table class="expected-values-table">
+              <caption>🎯 Expected Values (6 Fields)</caption>
+              <thead>
+                <tr>
+                  <th>Hinban</th>
+                  <th>Skname1</th>
+                  <th>Colorcd</th>
+                  <th>Colornm</th>
+                  <th>Sizecd</th>
+                  <th>Sizename</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>${this.escapeHtml(test.hinban)}</td>
+                  <td>${this.escapeHtml(test.skname1)}</td>
+                  <td>${this.escapeHtml(test.colorcd)}</td>
+                  <td>${this.escapeHtml(test.colornm)}</td>
+                  <td>${this.escapeHtml(test.sizecd)}</td>
+                  <td>${this.escapeHtml(test.sizename)}</td>
+                </tr>
+              </tbody>
+            </table>
             
-            <div class="detail-group">
-              <h4>📦 Expected SKU Name</h4>
-              <p>${test.skname1}</p>
-            </div>
-            
-            <div class="detail-group">
-              <h4>🎨 Color Info</h4>
-              <p>${test.colornm} (${test.colorcd})</p>
-            </div>
-            
-            <div class="detail-group">
-              <h4>📏 Size Info</h4>
-              <p>${test.sizename} (${test.sizecd})</p>
-            </div>
-            
-            <div class="detail-group">
+            <!-- Match Result Section -->
+            <div class="match-result-section ${matchResultClass}">
               <h4>📊 Match Result</h4>
-              <p>${test.found_count}/${test.total_count} fields found</p>
+              <div class="result-value">${test.found_count || 0}/${
+      test.total_count || 6
+    }</div>
+              <div class="result-text">
+                ${
+                  test.found_count === test.total_count
+                    ? '✅ All fields matched successfully!'
+                    : test.found_count && test.found_count > 0
+                    ? '⚠️ Partial match - some fields found'
+                    : '❌ No matching fields found'
+                }
+              </div>
             </div>
+            
+            <!-- Result Position/Ranking Section -->
+            ${
+              test.result_position && test.result_rank_range
+                ? `
+            <div class="match-result-section ${
+              test.result_position <= 5
+                ? 'success'
+                : test.result_position <= 20
+                ? 'partial'
+                : 'failed'
+            }">
+              <h4>🎯 Result Position</h4>
+              <div class="result-value">#${test.result_position}</div>
+              <div class="result-text">
+                ${test.result_rank_range}
+              </div>
+            </div>
+            `
+                : test.result_rank_range === 'Not Found'
+                ? `
+            <div class="match-result-section failed">
+              <h4>🎯 Result Position</h4>
+              <div class="result-text">
+                ❌ Expected result not found in search results
+              </div>
+            </div>
+            `
+                : ''
+            }
             
             ${
               test.error_message

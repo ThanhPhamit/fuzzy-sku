@@ -9,8 +9,11 @@
     "test:debug": "playwright test fuzzy-sku-search.spec.ts --debug",
     "test:ui": "playwright test --ui",
     "test:report": "playwright show-report",
-    "test:report:custom": "xdg-open custom-report.html || open custom-report.html",
+    "test:report:custom": "xdg-open custom-report-dist/index.html || open custom-report-dist/index.html",
     "test:single": "playwright test fuzzy-sku-search.spec.ts --grep",
+    "test:reset": "rm -f .test-results-shared.json fuzzy-sku-test-results.csv && rm -rf test-screenshots-steps/* custom-report-dist/screenshots/* && echo '✅ Test results and screenshots reset! Ready for fresh run.'",
+    "test:fresh": "pnpm run test:reset && playwright test fuzzy-sku-search.spec.ts",
+    "test:clean": "rm -rf test-screenshots-steps custom-report-dist playwright-report test-results .test-results-shared.json fuzzy-sku-test-results.csv && echo '🧹 All test artifacts cleaned!'",
     "codegen": "playwright codegen https://fuzzy-sku-poc.welfan-welink.biz"
   },
   "keywords": [

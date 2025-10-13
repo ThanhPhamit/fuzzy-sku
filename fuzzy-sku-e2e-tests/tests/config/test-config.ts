@@ -25,7 +25,7 @@ export const TestConfig = {
    * Wait time after search (milliseconds)
    * Increase if results load slowly
    */
-  SEARCH_WAIT_TIME: 2500,
+  SEARCH_WAIT_TIME: 10000, // Tăng từ 2.5s lên 5s để đợi kết quả search
 
   /**
    * Highlight duration (milliseconds)

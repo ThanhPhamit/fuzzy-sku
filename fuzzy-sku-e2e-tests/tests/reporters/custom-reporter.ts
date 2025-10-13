@@ -38,6 +38,8 @@ class CustomTestReporter implements Reporter {
     total_count?: number;
     error_message?: string;
     screenshot_path?: string;
+    result_position?: number;
+    result_rank_range?: string;
   }> = [];
 
   private totalTests = 0;
@@ -68,7 +70,6 @@ class CustomTestReporter implements Reporter {
     const sharedResultsPath = path.join(basePath, '.test-results-shared.json');
     const csvPath = path.join(basePath, 'fuzzy-sku-jpoc-testcases.csv');
     const resultsPath = path.join(basePath, 'fuzzy-sku-test-results.csv');
-    const htmlReportPath = path.join(basePath, 'custom-report.html');
 
     // === 0. LOAD TEST RESULTS FROM SHARED FILE ===
     console.log('📂 Loading test results from shared file...');
@@ -104,19 +105,98 @@ class CustomTestReporter implements Reporter {
       });
     }
 
-    // Merge results with original test cases
+    // === MERGE WITH PREVIOUS RESULTS ===
+    // Load previous results from CSV to preserve old test results
+    let previousResults: Map<number, any> = new Map();
+    if (fs.existsSync(resultsPath)) {
+      console.log('   📂 Loading previous results to merge...');
+      try {
+        const prevCsvContent = fs.readFileSync(resultsPath, 'utf-8');
+        const prevResults = parse(prevCsvContent, {
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+          bom: true,
+        });
+
+        prevResults.forEach((r: any) => {
+          const testNum = parseInt(r.test_number);
+          if (!isNaN(testNum)) {
+            previousResults.set(testNum, r);
+          }
+        });
+
+        console.log(
+          `   ✅ Loaded ${previousResults.size} previous results for merging`,
+        );
+
+        // 🐛 DEBUG: Log previous results
+        previousResults.forEach((r, testNum) => {
+          console.log(
+            `   🔍 Previous TC${String(testNum).padStart(3, '0')}: ${
+              r.status
+            } (found: ${r.found_count || 'N/A'}, total: ${
+              r.total_count || 'N/A'
+            })`,
+          );
+        });
+      } catch (error) {
+        console.warn('   ⚠️  Could not load previous results:', error);
+      }
+    }
+
+    // Merge results: Priority = Current Run > Previous Results > CSV Template
     this.testResults = testCases.map((tc, idx) => {
-      const saved = allResults.find((r: any) => r._testIndex === idx);
-      if (saved) {
-        // Remove internal _testIndex field
-        const { _testIndex, ...cleanResult } = saved;
+      const testNumber = idx + 1;
+
+      // 1st priority: Results from current run (from shared file)
+      // ✅ ONLY override if test was ACTUALLY run in this execution
+      const currentRun = allResults.find((r: any) => r._testIndex === idx);
+      if (currentRun) {
+        const { _testIndex, ...cleanResult } = currentRun;
         return {
-          test_number: idx + 1,
+          test_number: testNumber,
           ...cleanResult,
         };
       }
+
+      // 2nd priority: Results from previous runs (from old CSV)
+      // ✅ Preserve ALL previous results (PASS/FAIL/NOT_RUN) if test was NOT run this time
+      const previousRun = previousResults.get(testNumber);
+      if (previousRun) {
+        // Parse numeric fields safely (CSV returns strings)
+        const foundCount =
+          previousRun.found_count && String(previousRun.found_count).trim();
+        const totalCount =
+          previousRun.total_count && String(previousRun.total_count).trim();
+        const resultPosition =
+          previousRun.result_position &&
+          String(previousRun.result_position).trim();
+
+        return {
+          test_number: testNumber,
+          status: previousRun.status, // Keep previous status (PASS/FAIL/NOT_RUN)
+          aitehinmei: tc.aitehinmei,
+          hinban: tc.hinban,
+          skname1: tc.skname1,
+          colorcd: tc.colorcd,
+          colornm: tc.colornm,
+          sizecd: tc.sizecd,
+          sizename: tc.sizename,
+          found_count: foundCount ? parseInt(foundCount) : undefined,
+          total_count: totalCount ? parseInt(totalCount) : undefined,
+          error_message: previousRun.error_message || '',
+          screenshot_path: previousRun.screenshot_path || '',
+          result_position: resultPosition
+            ? parseInt(resultPosition)
+            : undefined,
+          result_rank_range: previousRun.result_rank_range || '',
+        };
+      }
+
+      // 3rd priority: Default NOT_RUN from CSV template (first time ever)
       return {
-        test_number: idx + 1,
+        test_number: testNumber,
         status: 'NOT_RUN' as const,
         aitehinmei: tc.aitehinmei,
         hinban: tc.hinban,
@@ -127,6 +207,22 @@ class CustomTestReporter implements Reporter {
         sizename: tc.sizename,
       };
     });
+
+    // Debug: Log merged results to verify
+    console.log('\n🔍 MERGED RESULTS:');
+    this.testResults.forEach((r, idx) => {
+      if (idx < 5) {
+        // Only log first 5
+        console.log(
+          `   TC${String(r.test_number).padStart(3, '0')}: ${
+            r.status
+          } (found: ${r.found_count || 'N/A'}, total: ${
+            r.total_count || 'N/A'
+          })`,
+        );
+      }
+    });
+    console.log('');
 
     this.totalTests = this.testResults.length;
 
@@ -155,6 +251,8 @@ class CustomTestReporter implements Reporter {
           'sizename',
           'found_count',
           'total_count',
+          'result_position',
+          'result_rank_range',
           'error_message',
           'screenshot_path',
         ],
@@ -212,8 +310,8 @@ class CustomTestReporter implements Reporter {
       );
     }
 
-    // === 3. GENERATE HTML REPORT & DEPLOY FOLDER ===
-    console.log('📄 Generating custom HTML report & deploy folder...');
+    // === 3. GENERATE HTML REPORT IN DEPLOY FOLDER ===
+    console.log('📄 Generating HTML report in deploy folder...');
     console.log('─'.repeat(80));
 
     try {
@@ -237,41 +335,8 @@ class CustomTestReporter implements Reporter {
         }),
       };
 
-      // === 3.1. PREPARE SCREENSHOTS FIRST ===
+      // === 3.1. PREPARE SCREENSHOTS ===
       const stepScreenshotsDir = path.join(basePath, 'test-screenshots-steps');
-
-      // Update all results for ROOT report (use test-screenshots-steps/ path)
-      const resultsForRoot = this.testResults.map((result) => {
-        const testId = `TC${String(result.test_number).padStart(3, '0')}`;
-        const stepScreenshots: string[] = [];
-
-        if (fs.existsSync(stepScreenshotsDir)) {
-          const allScreenshots = fs.readdirSync(stepScreenshotsDir);
-          const testScreenshots = allScreenshots
-            .filter((file) => file.startsWith(testId))
-            .sort();
-
-          testScreenshots.forEach((file) => {
-            stepScreenshots.push(`test-screenshots-steps/${file}`); // Relative to root
-          });
-        }
-
-        return {
-          ...result,
-          step_screenshots: stepScreenshots,
-          screenshot_path: stepScreenshots.join('|'),
-        };
-      });
-
-      // Generate custom-report.html in root (for local viewing)
-      HTMLReportGenerator.generate(
-        resultsForRoot,
-        reportSummary,
-        htmlReportPath,
-      );
-
-      console.log(`   ✅ HTML report generated: ${htmlReportPath}`);
-      console.log(`   🌐 Open in browser: file://${htmlReportPath}`);
 
       // === 3.2. CREATE DEPLOY FOLDER FOR S3/CloudFront ===
       const deployFolder = path.join(basePath, 'custom-report-dist');
@@ -284,6 +349,19 @@ class CustomTestReporter implements Reporter {
       }
       if (!fs.existsSync(deployScreenshotsFolder)) {
         fs.mkdirSync(deployScreenshotsFolder, { recursive: true });
+      }
+
+      // 🗑️ Clean old screenshots in deploy folder first
+      if (fs.existsSync(deployScreenshotsFolder)) {
+        const oldDeployScreenshots = fs.readdirSync(deployScreenshotsFolder);
+        if (oldDeployScreenshots.length > 0) {
+          console.log(
+            `   🗑️  Cleaning ${oldDeployScreenshots.length} old screenshot(s) from deploy folder...`,
+          );
+          oldDeployScreenshots.forEach((file) => {
+            fs.unlinkSync(path.join(deployScreenshotsFolder, file));
+          });
+        }
       }
 
       // Copy step screenshots to deploy folder
@@ -324,15 +402,6 @@ class CustomTestReporter implements Reporter {
         };
       });
 
-      // Debug: Verify screenshots are included
-      if (resultsForDeploy.length > 0) {
-        console.log(`   🔍 Sample test result with screenshots:`, {
-          test_number: resultsForDeploy[0].test_number,
-          screenshot_count: resultsForDeploy[0].step_screenshots?.length || 0,
-          screenshots: resultsForDeploy[0].step_screenshots,
-        });
-      }
-
       // Generate index.html in deploy folder
       HTMLReportGenerator.generate(
         resultsForDeploy,
@@ -340,7 +409,8 @@ class CustomTestReporter implements Reporter {
         deployIndexPath,
       );
 
-      console.log(`   ✅ Deploy folder created: ${deployFolder}`);
+      console.log(`   ✅ HTML report generated: ${deployIndexPath}`);
+      console.log(`   🌐 Open in browser: file://${deployIndexPath}`);
       console.log(`   📦 Ready to deploy to S3/CloudFront`);
       console.log(`   📂 Structure:`);
       console.log(`      - custom-report-dist/`);
